@@ -44,6 +44,8 @@ int tfs_lookup(char const *name);
  */
 int tfs_open(char const *name, int flags);
 
+typedef enum {OPEN_ON = 1, OPEN_OFF = 0} open_state_t;
+
 /* Closes a file
  * Input:
  * 	- file handle (obtained from a previous call to tfs_open)

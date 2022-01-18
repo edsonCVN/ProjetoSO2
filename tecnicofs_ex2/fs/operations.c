@@ -6,12 +6,21 @@
 #include <string.h>
 
 static pthread_mutex_t single_global_lock;
+static pthread_cond_t canDestroy;
+static int opened_files;
+static open_state_t can_open = OPEN_OFF; // perguntar se é mesmo necessário, usar só bool provavelmente
 
 int tfs_init() {
     state_init();
 
     if (pthread_mutex_init(&single_global_lock, 0) != 0)
         return -1;
+
+    if(pthread_cond_init(&canDestroy, NULL) != 0) 
+        return -1;
+    
+    opened_files = 0;
+    can_open = OPEN_ON;
 
     /* create root inode */
     int root = inode_create(T_DIRECTORY);
@@ -27,6 +36,9 @@ int tfs_destroy() {
     if (pthread_mutex_destroy(&single_global_lock) != 0) {
         return -1;
     }
+    if(pthread_cond_destroy(&canDestroy) != 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -35,7 +47,15 @@ static bool valid_pathname(char const *name) {
 }
 
 int tfs_destroy_after_all_closed() {
-    /* TO DO: implement this */
+    
+    if (pthread_mutex_lock(&single_global_lock) != 0)
+        return -1;
+    can_open = OPEN_OFF;
+    while(!opened_files == 0) {
+        pthread_cond_wait(&canDestroy, &single_global_lock);
+    }
+    if (pthread_mutex_unlock(&single_global_lock) != 0)
+        return -1;
     return 0;
 }
 
@@ -115,7 +135,15 @@ static int _tfs_open_unsynchronized(char const *name, int flags) {
 int tfs_open(char const *name, int flags) {
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
+
+    if (!can_open) {
+        pthread_mutex_unlock(&single_global_lock);
+        return -1;
+    }
     int ret = _tfs_open_unsynchronized(name, flags);
+    if(ret != -1) {
+        opened_files++;
+    }
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 
@@ -126,6 +154,10 @@ int tfs_close(int fhandle) {
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     int r = remove_from_open_file_table(fhandle);
+    if(r == 0) {
+        opened_files--;
+        pthread_cond_signal(&canDestroy);
+    }
     if (pthread_mutex_unlock(&single_global_lock) != 0)
         return -1;
 

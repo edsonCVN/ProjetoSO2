@@ -1,1 +1,3 @@
 # ProjectoSO2
+
+variaveis globais a static?????

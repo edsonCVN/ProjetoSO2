@@ -68,7 +68,13 @@ fmt: $(SOURCES) $(HEADERS)
 # the CC, LD, CFLAGS and LDFLAGS are used in this rule
 tests/client_server_simple_test: tests/client_server_simple_test.o client/tecnicofs_client_api.o
 fs/tfs_server: fs/operations.o fs/state.o
-tests/lib_destroy_after_all_closed_test: fs/operations.o fs/state.o
+tests/lib_destroy_after_all_closed_test: tests/lib_destroy_after_all_closed_test.o fs/operations.o fs/state.o
+
+test1:
+	./tests/lib_destroy_after_all_closed_test
+
+tests:
+	./tests/lib_destroy_after_all_closed_test
 
 clean:
 	rm -f $(OBJECTS) $(TARGET_EXECS)
