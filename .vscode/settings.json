@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "assert.h": "c",
+        "string.h": "c",
+        "pthread.h": "c",
+        "unistd.h": "c"
+    }
+}
