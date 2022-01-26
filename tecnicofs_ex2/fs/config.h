@@ -12,4 +12,6 @@
 
 #define DELAY (5000)
 
+#define S 1
+
 #endif // CONFIG_H
