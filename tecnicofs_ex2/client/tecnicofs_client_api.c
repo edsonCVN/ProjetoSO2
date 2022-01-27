@@ -28,8 +28,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     if (asprintf(&num, "%d", TFS_OP_CODE_UNMOUNT) == -1) {
         perror("asprintf");
     } else {
-        strcat(intput, "|");
-        strcat(intput, "|");
+        strcat(strcpy(intput, num), "|");
         strcat(intput, client_pipe_path);
         printf("%s\n", intput);
     }
@@ -81,14 +80,15 @@ int tfs_unmount() {
     char intput[CLIENT_BUFFER_SIZE];
     int output = -1;
     char *num;
+    char *num1;
 
     //buffer's initialization
     memset(intput, '\0', CLIENT_BUFFER_SIZE);
 
-    if (asprintf(&intput, "%d", TFS_OP_CODE_UNMOUNT) == -1 || asprintf(&num, "%d", session_id) == -1 ) {
+    if (asprintf(&num1, "%d", TFS_OP_CODE_UNMOUNT) == -1 || asprintf(&num, "%d", session_id) == -1 ) {
         perror("asprintf");
     } else {
-        strcat(intput, "|");
+        strcat(strcpy(intput, num1), "|");
         strcat(intput, num);
     }
 
