@@ -29,4 +29,8 @@ O original (v1) era “if ((inumber * (int) sizeof(allocation_state_t)) == 0)”
 
 3. Removido um comentário obsoleto (na v1, linhas 159-160 do state.c).
 
+-----------------
+-----------------
 
+um macro para cada buffer?????
+posiveis erros do unmount
