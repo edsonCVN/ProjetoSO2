@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -136,20 +135,25 @@ int main(int argc, char **argv) {
         }
         buffer[ret] = 0; //mesmo necessário (sendo que o buffer é previamente inicializado a '\0'?)
     
-        op_code = strtok(buffer, "|");
-
+        op_code = atoi(strtok(buffer, "|"));
+        
+        int session_id;
+        char *client_pipe_path = NULL;
+        
         switch (op_code) {
 
         case TFS_OP_CODE_MOUNT:
             
-            char *client_pipe_path = strtok(NULL, "|");
+            client_pipe_path = strtok(NULL, "|");
             tfs_server_mount(client_pipe_path);
-            
+            //tfs_server_mount(strtok(NULL, "|"));
+
             break;
         
         case TFS_OP_CODE_UNMOUNT:
-            int session_id = strtok(NULL, "|");
+            session_id = atoi(strtok(NULL, "|"));
             tfs_server_unmount(session_id);
+            //tfs_server_unmount(atoi(strtok(NULL, "|")));
             break;
         
         case TFS_OP_CODE_OPEN:

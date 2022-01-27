@@ -20,11 +20,22 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     char intput[CLIENT_BUFFER_SIZE];
     //int output = -1;
     int output_ptr;
+    char *num;
 
     //buffer's initialization
     memset(intput, '\0', CLIENT_BUFFER_SIZE);
-    memcpy(intput, TFS_OP_CODE_MOUNT + "|", 2);
-    memcpy(intput + 2, client_pipe_path, strlen(client_pipe_path));
+
+    if (asprintf(&num, "%d", TFS_OP_CODE_UNMOUNT) == -1) {
+        perror("asprintf");
+    } else {
+        strcat(intput, "|");
+        strcat(intput, "|");
+        strcat(intput, client_pipe_path);
+        printf("%s\n", intput);
+    }
+
+    //memcpy(intput, TFS_OP_CODE_MOUNT + "|", 2);
+    //memcpy(intput + 2, client_pipe_path, strlen(client_pipe_path));
     memcpy(c_pipe_path, client_pipe_path, strlen(client_pipe_path));
     c_pipe_path[strlen(client_pipe_path)] = 0;
 
@@ -69,11 +80,20 @@ int tfs_unmount() {
     
     char intput[CLIENT_BUFFER_SIZE];
     int output = -1;
+    char *num;
 
     //buffer's initialization
     memset(intput, '\0', CLIENT_BUFFER_SIZE);
-    memcpy(intput, TFS_OP_CODE_UNMOUNT + "|", 2);
-    memcpy(intput + 2, session_id, sizeof(int));
+
+    if (asprintf(&intput, "%d", TFS_OP_CODE_UNMOUNT) == -1 || asprintf(&num, "%d", session_id) == -1 ) {
+        perror("asprintf");
+    } else {
+        strcat(intput, "|");
+        strcat(intput, num);
+    }
+
+    //memcpy(intput, TFS_OP_CODE_UNMOUNT + "|", 2);
+    //memcpy(intput + 2, session_id, sizeof(int));
 
     if(write(tx_server_pipe, intput, CLIENT_BUFFER_SIZE) < 0) {
         return -1;
