@@ -5,18 +5,29 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 
-//FIX ME como é o que o cliente guarda o session_id?
+#include <sys/types.h>
+#include <sys/stat.h>
+
+int session_id = -1;
+int tx_server_pipe = -1;
+int rx_client_pipe = -1;
+char c_pipe_path[PIPE_PATH_SIZE];
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
-    char intput[MOUNT_BUFFER_SIZE];
-    int output;
+    char intput[CLIENT_BUFFER_SIZE];
+    //int output = -1;
+    int output_ptr;
 
     //buffer's initialization
-    memset(intput, '\0', MOUNT_BUFFER_SIZE);
+    memset(intput, '\0', CLIENT_BUFFER_SIZE);
     memcpy(intput, TFS_OP_CODE_MOUNT + "|", 2);
     memcpy(intput + 2, client_pipe_path, strlen(client_pipe_path));
+    memcpy(c_pipe_path, client_pipe_path, strlen(client_pipe_path));
+    c_pipe_path[strlen(client_pipe_path)] = 0;
+
 
     if (unlink(client_pipe_path) != 0 && errno != ENOENT) {
         return -1;
@@ -28,33 +39,57 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     }
 
     // first open clients->server pipe for write 
-    int tx = open(server_pipe_path, O_WRONLY);
-    if (tx == -1) {
+    int tx_server_pipe = open(server_pipe_path, O_WRONLY);
+    if (tx_server_pipe == -1) {
         return -1;
     }
     
-    if(write(tx, intput, MOUNT_BUFFER_SIZE) < 0) {
+    if(write(tx_server_pipe, intput, CLIENT_BUFFER_SIZE) < 0) {
         return -1;
     }
     
     //assumindo que já foi aberto para escrita no server
-    int rx = open(client_pipe_path, O_RDONLY);
-    if(rx == -1) {
+    int rx_client_pipe = open(client_pipe_path, O_RDONLY);
+    if(rx_client_pipe == -1) {
         return -1;
     }
     
-    if(read(rx, output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
+    //if(read(rx_client_pipe, output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
+    if(read(rx_client_pipe, &output_ptr, sizeof(int)) < 0 || output_ptr < 0) {
         return -1;
     }
 
-    /* FIX ME: guardar o session id */
+    //session_id = output;
+    session_id = output_ptr;
 
     return 0;
 }
 
 int tfs_unmount() {
-    /* TODO: Implement this */
-    return -1;
+    
+    char intput[CLIENT_BUFFER_SIZE];
+    int output = -1;
+
+    //buffer's initialization
+    memset(intput, '\0', CLIENT_BUFFER_SIZE);
+    memcpy(intput, TFS_OP_CODE_UNMOUNT + "|", 2);
+    memcpy(intput + 2, session_id, sizeof(int));
+
+    if(write(tx_server_pipe, intput, CLIENT_BUFFER_SIZE) < 0) {
+        return -1;
+    }
+
+    if(read(rx_client_pipe, output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
+        return -1;
+    }
+
+    close(rx_client_pipe);
+    close(tx_server_pipe);
+    
+    if (unlink(c_pipe_path) != 0 && errno != ENOENT) {
+        return -1;
+    }
+    return 0;
 }
 
 int tfs_open(char const *name, int flags) {

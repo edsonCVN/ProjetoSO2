@@ -20,7 +20,7 @@ enum {
 };
 
 #define PIPE_PATH_SIZE 40
-#define MOUNT_BUFFER_SIZE 42
+#define CLIENT_BUFFER_SIZE 42
 #define SERVER_BUFFER_SIZE 47
                     
 

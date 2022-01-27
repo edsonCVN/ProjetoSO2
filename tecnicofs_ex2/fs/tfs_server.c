@@ -2,32 +2,32 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <string.h>
 
-char sessions_table[S][PIPE_PATH_SIZE];
+#include <sys/types.h>
+#include <sys/stat.h>
+
+int sessions_tx_table[S];
 allocation_state_t free_sessions[S];
 int opened_sessions;
 int rx_server_pipe;
 
+int return_value;
+
+
 int server_init(char const *pipename) {
     
     if (unlink(pipename) != 0 && errno != ENOENT) {
-        fprintf(stderr, "[ERR]: unlink(%s) failed: %s\n", pipename, strerror(errno));
         return -1;
     }
 
     // creates clients->sever pipe
     if (mkfifo(pipename, 0640) != 0) {
-        fprintf(stderr, "[ERR]: mkfifo failed: %s\n", strerror(errno));
         return -1;
     }
 
-    // opens clients->server pipe for reading
-    rx_server_pipe = open(pipename, O_RDONLY);
-    if (rx_server_pipe == -1) {
-        fprintf(stderr, "[ERR]: open failed: %s\n", strerror(errno));
-        return -1;
-    }
-
+   
     for(int i = 0; i < S; i++) {
         free_sessions[i] = FREE;
     }
@@ -39,15 +39,25 @@ int server_init(char const *pipename) {
 /*  Receives the new client's pipe path name.
     If successful retuns the new session_id, else return -1.
 */
-int add_new_session (char const *client_pipe_path) {
+int add_new_session (int client_pipe_tx) {
     
     for (int i = 0; i < S; i++) {
         if (free_sessions[i] == FREE) {
             free_sessions[i] = TAKEN;
-            memcpy(sessions_table[i], client_pipe_path, PIPE_PATH_SIZE);
+            sessions_tx_table[i] = client_pipe_tx;
             opened_sessions++;
             return i;
         }
+    }
+    return -1;
+}
+
+int delete_session (int session_id) {
+    if (free_sessions[session_id] == TAKEN) {
+        free_sessions[session_id] = FREE;
+        sessions_tx_table[session_id] = -1;
+        opened_sessions--;
+        return 0;
     }
     return -1;
 }
@@ -56,35 +66,38 @@ int add_new_session (char const *client_pipe_path) {
     In the process opens the client's pipe to comunicate the new session_id if 
     successful (else -1). If mount is successful returns 0 else -1. 
 */
-int tfs_server_mount(char const* client_pipe_path) {
+void tfs_server_mount(char const* client_pipe_path) {
     int tx = open(client_pipe_path, O_WRONLY);
     if (tx == -1) {
-        return -1;
+        return;
     }
 
     //criar nova sessão
     if (opened_sessions == S) {
-        if(write(tx, -1, sizeof(int)) < 0){
-            close(tx);
-            return -1;
-        }
+        return_value = -1;
+        //write(tx, -1, sizeof(int));
+        write(tx, &return_value, sizeof(int));
         close(tx);
+        return;
     }
             
-    int session_id = add_new_session(client_pipe_path);
+    int session_id = add_new_session(tx);
     if(session_id < 0) {
-        if(write(tx, -1, sizeof(int)) < 0){
-            close(tx);
-            return -1;
-        }
+        write(tx, -1, sizeof(int));
         close(tx);
+        return;
     }
             
-    if(write(tx, session_id, sizeof(int)) < 0) {
+    if(write(tx, session_id, sizeof(int)) < 0) { //não trata de situação onde não consegue escrever
         close(tx);
-        return -1;
+        return;
     }
-    return 0;
+}
+
+void tfs_server_unmount(int session_id) {
+    int tx = sessions_tx_table[session_id];
+    delete_session(session_id);
+    write(tx, delete_session(session_id), sizeof(int)); //não trata de situação onde não consegue escrever
     close(tx);
 }
 
@@ -106,30 +119,37 @@ int main(int argc, char **argv) {
         char buffer[SERVER_BUFFER_SIZE];
         int op_code;
         
+        // opens clients->server pipe for reading
+        rx_server_pipe = open(pipename, O_RDONLY);
+        if (rx_server_pipe == -1) {
+            return -1;
+        }
+
         ssize_t ret = read(rx_server_pipe, buffer, SERVER_BUFFER_SIZE - 1);
         if (ret == 0) {
-            // ret == 0 signals EOF;
-            return 0; //not sure ???????????????????????
+            close(rx_server_pipe);
+            continue;
         } else if (ret == -1) {
             // ret == -1 signals error
-            fprintf(stderr, "[ERR]: read failed: %s\n", strerror(errno));
+            close(rx_server_pipe);
             exit(EXIT_FAILURE);
         }
         buffer[ret] = 0; //mesmo necessário (sendo que o buffer é previamente inicializado a '\0'?)
     
-        op_code = atoi(strtok(buffer, "|"));
+        op_code = strtok(buffer, "|");
 
         switch (op_code) {
-        case TFS_OP_CODE_MOUNT:
 
-            char *client_pipe_path = atoi(strtok(NULL, "|"));
-            if(tfs_server_mount(client_pipe_path) < 0) {
-                exit(EXIT_FAILURE);
-            }
+        case TFS_OP_CODE_MOUNT:
+            
+            char *client_pipe_path = strtok(NULL, "|");
+            tfs_server_mount(client_pipe_path);
+            
             break;
         
         case TFS_OP_CODE_UNMOUNT:
-            /* code */
+            int session_id = strtok(NULL, "|");
+            tfs_server_unmount(session_id);
             break;
         
         case TFS_OP_CODE_OPEN:
@@ -150,16 +170,15 @@ int main(int argc, char **argv) {
 
         case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
             /* code */
+            //unlink do server_pipe
             break;
         
         default:
             break;
         }
-        
-        
-
+        close(rx_server_pipe);
     }
      
-
+    //close do pipe do servidor no do destroy?
     return 0;
 }
