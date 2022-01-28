@@ -113,10 +113,10 @@ void tfs_server_mount() {
 
 void tfs_server_unmount() {
 
-    int return_value;
+    int return_value = -1;
     char buffer[1];
     int session_id;
-
+    printf("in unm\n");
     ssize_t ret = read(rx_server_pipe, buffer, 1);
     if (ret == 0) {
         close(rx_server_pipe);
@@ -169,27 +169,21 @@ int main(int argc, char **argv) {
             close(rx_server_pipe);
             exit(EXIT_FAILURE);
         }
-        //buffer[ret] = 0; //mesmo necessário (sendo que o buffer é previamente inicializado a '\0'?)
-        buffer[1] = 0;
+        buffer[ret] = 0;
         int op_code = atoi(buffer);
-        printf("ww %s ww: %d\n", buffer, op_code );
         
         switch (op_code) {
 
         case TFS_OP_CODE_MOUNT:
-            printf("entrou mount\n");
-            //client_pipe_path = strtok(NULL, "|");
-            //printf("recebeu client_path:%s\n", client_pipe_path);
-            tfs_server_mount();
-            //tfs_server_mount(strtok(NULL, "|"));
 
+            printf("entrou mount\n");
+            tfs_server_mount();
+            printf("saiu mount\n");
             break;
         
         case TFS_OP_CODE_UNMOUNT:
             printf("entrou unmount\n");
-            //session_id = atoi(strtok(NULL, "|"));
             tfs_server_unmount();
-            //tfs_server_unmount(atoi(strtok(NULL, "|")));
             break;
         
         case TFS_OP_CODE_OPEN:
