@@ -72,7 +72,7 @@ int tfs_unmount() {
     //buffer's initialization
     memset(input, '\0', 2);
    
-    sprintf(input, "%d%d", TFS_OP_CODE_MOUNT, session_id);
+    sprintf(input, "%d%d", TFS_OP_CODE_UNMOUNT, session_id);
 
     if(write(tx_server_pipe, input, 2) < 0) {
         return -1;
