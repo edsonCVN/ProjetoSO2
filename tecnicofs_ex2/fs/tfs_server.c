@@ -78,14 +78,11 @@ void tfs_server_mount() {
         return ; //completar
     }
   
-    printf("recebeu client_path:%s\n", client_pipe_path);
-
     int tx = open(client_pipe_path, O_WRONLY);
     if (tx == -1) {
         return;
     }
 
-    printf("abriu client_pipe\n");
     //criar nova sessão
     if (opened_sessions == S) {
         return_value = -1;
@@ -116,7 +113,7 @@ void tfs_server_unmount() {
     int return_value = -1;
     char buffer[1];
     int session_id;
-    printf("in unm\n");
+    
     ssize_t ret = read(rx_server_pipe, buffer, 1);
     if (ret == 0) {
         close(rx_server_pipe);
@@ -127,9 +124,7 @@ void tfs_server_unmount() {
         return ; //completar
     }
 
-    printf("leu no unm \n");
     session_id = atoi(buffer);
-    printf("session_id:%d\n", session_id);
 
     int tx = sessions_tx_table[session_id];
     return_value = delete_session(session_id);
@@ -153,7 +148,6 @@ int main(int argc, char **argv) {
 
     while (true) { //com open e close do pipe clients->server ?
         char buffer[2];
-        
         // opens clients->server pipe for reading
         rx_server_pipe = open(pipename, O_RDONLY);
         if (rx_server_pipe == -1) {
@@ -161,7 +155,11 @@ int main(int argc, char **argv) {
         }
 
         ssize_t ret = read(rx_server_pipe, buffer, 1);
+        
+        buffer[ret] = 0;
+        
         if (ret == 0) {
+           
             close(rx_server_pipe);
             continue;
         } else if (ret == -1) {
@@ -184,6 +182,7 @@ int main(int argc, char **argv) {
         case TFS_OP_CODE_UNMOUNT:
             printf("entrou unmount\n");
             tfs_server_unmount();
+            printf("saiu unmount\n");
             break;
         
         case TFS_OP_CODE_OPEN:
@@ -210,6 +209,7 @@ int main(int argc, char **argv) {
         default:
             break;
         }
+
         close(rx_server_pipe);
     }
      

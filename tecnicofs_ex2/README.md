@@ -46,3 +46,9 @@ o que fiz de manhã:
     terminal_cliente(em tecnicofs_ex2): ./tests/client_server_simple_test /tmp/clt /tmp/srv
     
     executando o gdb no server (gdb --args ./tfs_server /tmp/srv) conclui que a linha 91 so tfs_server não está a funcionar (fala com o stor para ver a melhor opção, talvez passar tudo em string pelos pipes...)
+
+
+
+
+bug para falar com o stor.
+    de forma aparentemente aleatória, à vezes onde o sevidor não lê o código de unmount. e não conseguimos identificar a causa do erro. suspeitamos que pode ser da forma como o sprintf atua nos buffers (?)

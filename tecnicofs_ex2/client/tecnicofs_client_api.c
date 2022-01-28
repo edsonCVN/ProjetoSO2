@@ -17,14 +17,25 @@ char c_pipe_path[PIPE_PATH_SIZE];
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
-    char input[41];
+    char input[40];
+    char input1[2];
     int output = -1;
 
+    memset(input, '\0', PIPE_PATH_SIZE);
+    memcpy(input, client_pipe_path, strlen(client_pipe_path));
+
+    memset(input1, '\0', 2);
+    sprintf(input1, "%d", TFS_OP_CODE_MOUNT);
+    
+    printf("input1: %.1s\n", input1);
+    printf("input: %s\n", input);
+    
+/*
     //buffer's initialization
     memset(input, '\0', 41);
-    sprintf(input, "%d%s", TFS_OP_CODE_MOUNT, client_pipe_path);
+    sprintf(input, "%c%s", TFS_OP_CODE_MOUNT, client_pipe_path);
     memcpy(c_pipe_path, client_pipe_path, strlen(client_pipe_path));
-    c_pipe_path[strlen(client_pipe_path)] = 0;
+    c_pipe_path[strlen(client_pipe_path)] = 0;*/
 
 
     if (unlink(client_pipe_path) != 0 && errno != ENOENT) {
@@ -42,9 +53,13 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
         return -1;
     }
     printf("client buffer: %s\n", input);
+    /*
     if(write(tx_server_pipe, input, 41) < 0) {
         return -1;
-    }
+    }*/
+
+    write(tx_server_pipe, input1, 1);
+    write(tx_server_pipe, input, PIPE_PATH_SIZE);
     
     //assumindo que já foi aberto para escrita no server
     rx_client_pipe = open(client_pipe_path, O_RDONLY);
@@ -67,14 +82,20 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 int tfs_unmount() {
     
     char input[2];
+    char input1[2];
     int output = -1;
 
     //buffer's initialization
     memset(input, '\0', 2);
+    sprintf(input, "%d", TFS_OP_CODE_UNMOUNT);
+    memset(input1, '\0', 2);
+    sprintf(input1, "%d", session_id);
    
-    sprintf(input, "%d%d", TFS_OP_CODE_UNMOUNT, session_id);
+    if(write(tx_server_pipe, input, 1) < 0) {
+        return -1;
+    }
 
-    if(write(tx_server_pipe, input, 2) < 0) {
+    if(write(tx_server_pipe, input1, 1) < 0) {
         return -1;
     }
 
@@ -93,7 +114,7 @@ int tfs_unmount() {
 }
 
 int tfs_open(char const *name, int flags) {
-    /* TODO: Implement this */
+    
     return -1;
 }
 
