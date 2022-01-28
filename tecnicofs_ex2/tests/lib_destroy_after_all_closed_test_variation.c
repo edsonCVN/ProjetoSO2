@@ -99,8 +99,8 @@ int main() {
 
     assert(tfs_destroy_after_all_closed() != -1);
 
-    pthread_join(&t[0], NULL);
-    pthread_join(&t[1], NULL);
+    pthread_join(t[0], NULL);
+    pthread_join(t[1], NULL);
 
     assert(pthread_create(&t[2], NULL, fn_thread_write_2, NULL) != -1);
     assert(pthread_create(&t[3], NULL, fn_thread_read_2, NULL) != -1);

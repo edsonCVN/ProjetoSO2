@@ -51,7 +51,7 @@ int tfs_destroy_after_all_closed() {
     if (pthread_mutex_lock(&single_global_lock) != 0)
         return -1;
     can_open = OPEN_OFF;
-    while(!opened_files == 0) {
+    while(opened_files != 0) {
         pthread_cond_wait(&canDestroy, &single_global_lock);
     }
     if (pthread_mutex_unlock(&single_global_lock) != 0)

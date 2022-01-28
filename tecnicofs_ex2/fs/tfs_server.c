@@ -12,9 +12,6 @@ allocation_state_t free_sessions[S];
 int opened_sessions;
 int rx_server_pipe;
 
-int return_value;
-
-
 int server_init(char const *pipename) {
     
     if (unlink(pipename) != 0 && errno != ENOENT) {
@@ -65,39 +62,78 @@ int delete_session (int session_id) {
     In the process opens the client's pipe to comunicate the new session_id if 
     successful (else -1). If mount is successful returns 0 else -1. 
 */
-void tfs_server_mount(char const* client_pipe_path) {
+void tfs_server_mount() {
+
+    //char buffer[PIPE_PATH_SIZE];
+    int return_value = -1;
+    char client_pipe_path[PIPE_PATH_SIZE];
+
+    ssize_t ret = read(rx_server_pipe, client_pipe_path, PIPE_PATH_SIZE);
+    if (ret == 0) {
+        close(rx_server_pipe);
+        return ;
+    } else if (ret == -1) {
+        // ret == -1 signals error
+        close(rx_server_pipe);
+        return ; //completar
+    }
+  
+    printf("recebeu client_path:%s\n", client_pipe_path);
+
     int tx = open(client_pipe_path, O_WRONLY);
     if (tx == -1) {
         return;
     }
+
     printf("abriu client_pipe\n");
     //criar nova sessão
     if (opened_sessions == S) {
         return_value = -1;
         //write(tx, -1, sizeof(int));
-        (void) /*manhoso*/ write(tx, &return_value, sizeof(int));
+        write(tx, &return_value, sizeof(int));
         close(tx);
         return;
     }
             
-    int session_id = add_new_session(tx);
-    if(session_id < 0) {
-        return_value = -1;
-        (void) /*manhoso*/ write(tx, &return_value, sizeof(int));
+    //int session_id = add_new_session(tx);
+    return_value = add_new_session(tx);
+
+    if(return_value < 0) {
+        write(tx, &return_value, sizeof(int));
         close(tx);
         return;
     }
+
     //problemas de sincornização, recorrer a return_value?
-    if(write(tx, &session_id, sizeof(int)) < 0) { //não trata de situação onde não consegue escrever
+    if(write(tx, &return_value, sizeof(int)) < 0) { //não trata de situação onde não consegue escrever
         close(tx);
         return;
     }
 }
 
-void tfs_server_unmount(int session_id) {
+void tfs_server_unmount() {
+
+    int return_value;
+    char buffer[1];
+    int session_id;
+
+    ssize_t ret = read(rx_server_pipe, buffer, 1);
+    if (ret == 0) {
+        close(rx_server_pipe);
+        return;
+    } else if (ret == -1) {
+        // ret == -1 signals error
+        close(rx_server_pipe);
+        return ; //completar
+    }
+
+    printf("leu no unm \n");
+    session_id = atoi(buffer);
+    printf("session_id:%d\n", session_id);
+
     int tx = sessions_tx_table[session_id];
     return_value = delete_session(session_id);
-    (void) /*manhoso*/ write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+    write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
     close(tx);
 }
 
@@ -116,8 +152,7 @@ int main(int argc, char **argv) {
     }
 
     while (true) { //com open e close do pipe clients->server ?
-        char buffer[SERVER_BUFFER_SIZE];
-        int op_code;
+        char buffer[2];
         
         // opens clients->server pipe for reading
         rx_server_pipe = open(pipename, O_RDONLY);
@@ -125,7 +160,7 @@ int main(int argc, char **argv) {
             return -1;
         }
 
-        ssize_t ret = read(rx_server_pipe, buffer, SERVER_BUFFER_SIZE - 1);
+        ssize_t ret = read(rx_server_pipe, buffer, 1);
         if (ret == 0) {
             close(rx_server_pipe);
             continue;
@@ -134,28 +169,26 @@ int main(int argc, char **argv) {
             close(rx_server_pipe);
             exit(EXIT_FAILURE);
         }
-        buffer[ret] = 0; //mesmo necessário (sendo que o buffer é previamente inicializado a '\0'?)
-    
-        op_code = atoi(strtok(buffer, "|"));
-        
-        int session_id;
-        char *client_pipe_path = NULL;
+        //buffer[ret] = 0; //mesmo necessário (sendo que o buffer é previamente inicializado a '\0'?)
+        buffer[1] = 0;
+        int op_code = atoi(buffer);
+        printf("ww %s ww: %d\n", buffer, op_code );
         
         switch (op_code) {
 
         case TFS_OP_CODE_MOUNT:
             printf("entrou mount\n");
-            client_pipe_path = strtok(NULL, "|");
-            printf("recebeu client_path:%s\n", client_pipe_path);
-            tfs_server_mount(client_pipe_path);
+            //client_pipe_path = strtok(NULL, "|");
+            //printf("recebeu client_path:%s\n", client_pipe_path);
+            tfs_server_mount();
             //tfs_server_mount(strtok(NULL, "|"));
 
             break;
         
         case TFS_OP_CODE_UNMOUNT:
             printf("entrou unmount\n");
-            session_id = atoi(strtok(NULL, "|"));
-            tfs_server_unmount(session_id);
+            //session_id = atoi(strtok(NULL, "|"));
+            tfs_server_unmount();
             //tfs_server_unmount(atoi(strtok(NULL, "|")));
             break;
         
