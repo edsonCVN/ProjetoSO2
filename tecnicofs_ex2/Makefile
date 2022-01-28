@@ -14,7 +14,7 @@ INCLUDES = $(addprefix -I, $(INCLUDE_DIRS))
 SOURCES  := $(wildcard */*.c)
 HEADERS  := $(wildcard */*.h)
 OBJECTS  := $(SOURCES:.c=.o)
-TARGET_EXECS := fs/tfs_server tests/lib_destroy_after_all_closed_test_variation tests/lib_destroy_after_all_closed_test tests/client_server_simple_test
+TARGET_EXECS := fs/tfs_server tests/client_server_simple_test tests/lib_destroy_after_all_closed_test_variation tests/lib_destroy_after_all_closed_test tests/client_server_simple_test
 
 # VPATH is a variable used by Makefile which finds *sources* and makes them available throughout the codebase
 # vpath %.h <DIR> tells make to look for header files in <DIR>
@@ -77,9 +77,13 @@ test1:
 test2:
 	./tests/lib_destroy_after_all_closed_test_variation
 
+test3:
+	./tests/client_server_simple_test
+
 tests:
 	./tests/lib_destroy_after_all_closed_test
-
+	./tests/lib_destroy_after_all_closed_test_variation
+	./tests/client_server_simple_test
 clean:
 	rm -f $(OBJECTS) $(TARGET_EXECS)
 

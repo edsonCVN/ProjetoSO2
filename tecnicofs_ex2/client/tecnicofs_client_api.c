@@ -17,22 +17,24 @@ char c_pipe_path[PIPE_PATH_SIZE];
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
-    char intput[CLIENT_BUFFER_SIZE];
+    char input[CLIENT_BUFFER_SIZE];
     //int output = -1;
     int output_ptr;
     char *num;
 
     //buffer's initialization
-    memset(intput, '\0', CLIENT_BUFFER_SIZE);
-
+    memset(input, '\0', CLIENT_BUFFER_SIZE);
+    /*
     if (asprintf(&num, "%d", TFS_OP_CODE_UNMOUNT) == -1) {
         perror("asprintf");
     } else {
         strcat(strcpy(intput, num), "|");
+        free(num);
         strcat(intput, client_pipe_path);
         printf("%s\n", intput);
     }
-
+    */
+    sprintf(input, "%d|%s", TFS_OP_CODE_MOUNT, client_pipe_path);
     //memcpy(intput, TFS_OP_CODE_MOUNT + "|", 2);
     //memcpy(intput + 2, client_pipe_path, strlen(client_pipe_path));
     memcpy(c_pipe_path, client_pipe_path, strlen(client_pipe_path));
@@ -49,17 +51,17 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     }
 
     // first open clients->server pipe for write 
-    int tx_server_pipe = open(server_pipe_path, O_WRONLY);
+    tx_server_pipe = open(server_pipe_path, O_WRONLY);
     if (tx_server_pipe == -1) {
         return -1;
     }
-    
-    if(write(tx_server_pipe, intput, CLIENT_BUFFER_SIZE) < 0) {
+    printf("client buffer: %s\n", input);
+    if(write(tx_server_pipe, input, CLIENT_BUFFER_SIZE) < 0) {
         return -1;
     }
     
     //assumindo que já foi aberto para escrita no server
-    int rx_client_pipe = open(client_pipe_path, O_RDONLY);
+    rx_client_pipe = open(client_pipe_path, O_RDONLY);
     if(rx_client_pipe == -1) {
         return -1;
     }
@@ -68,7 +70,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     if(read(rx_client_pipe, &output_ptr, sizeof(int)) < 0 || output_ptr < 0) {
         return -1;
     }
-
+    printf("recebeu session_id: %d\n", session_id);
     //session_id = output;
     session_id = output_ptr;
 
@@ -77,29 +79,30 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
 int tfs_unmount() {
     
-    char intput[CLIENT_BUFFER_SIZE];
+    char input[CLIENT_BUFFER_SIZE];
     int output = -1;
     char *num;
     char *num1;
 
     //buffer's initialization
-    memset(intput, '\0', CLIENT_BUFFER_SIZE);
-
+    memset(input, '\0', CLIENT_BUFFER_SIZE);
+    /*
     if (asprintf(&num1, "%d", TFS_OP_CODE_UNMOUNT) == -1 || asprintf(&num, "%d", session_id) == -1 ) {
         perror("asprintf");
     } else {
         strcat(strcpy(intput, num1), "|");
         strcat(intput, num);
     }
-
+    */
+    sprintf(input, "%d|%d", TFS_OP_CODE_MOUNT, session_id);
     //memcpy(intput, TFS_OP_CODE_UNMOUNT + "|", 2);
     //memcpy(intput + 2, session_id, sizeof(int));
 
-    if(write(tx_server_pipe, intput, CLIENT_BUFFER_SIZE) < 0) {
+    if(write(tx_server_pipe, input, CLIENT_BUFFER_SIZE) < 0) {
         return -1;
     }
 
-    if(read(rx_client_pipe, output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
+    if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
         return -1;
     }
 

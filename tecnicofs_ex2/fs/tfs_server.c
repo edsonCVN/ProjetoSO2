@@ -70,24 +70,25 @@ void tfs_server_mount(char const* client_pipe_path) {
     if (tx == -1) {
         return;
     }
-
+    printf("abriu client_pipe\n");
     //criar nova sessão
     if (opened_sessions == S) {
         return_value = -1;
         //write(tx, -1, sizeof(int));
-        write(tx, &return_value, sizeof(int));
+        (void) /*manhoso*/ write(tx, &return_value, sizeof(int));
         close(tx);
         return;
     }
             
     int session_id = add_new_session(tx);
     if(session_id < 0) {
-        write(tx, -1, sizeof(int));
+        return_value = -1;
+        (void) /*manhoso*/ write(tx, &return_value, sizeof(int));
         close(tx);
         return;
     }
-            
-    if(write(tx, session_id, sizeof(int)) < 0) { //não trata de situação onde não consegue escrever
+    //problemas de sincornização, recorrer a return_value?
+    if(write(tx, &session_id, sizeof(int)) < 0) { //não trata de situação onde não consegue escrever
         close(tx);
         return;
     }
@@ -95,8 +96,8 @@ void tfs_server_mount(char const* client_pipe_path) {
 
 void tfs_server_unmount(int session_id) {
     int tx = sessions_tx_table[session_id];
-    delete_session(session_id);
-    write(tx, delete_session(session_id), sizeof(int)); //não trata de situação onde não consegue escrever
+    return_value = delete_session(session_id);
+    (void) /*manhoso*/ write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
     close(tx);
 }
 
@@ -143,14 +144,16 @@ int main(int argc, char **argv) {
         switch (op_code) {
 
         case TFS_OP_CODE_MOUNT:
-            
+            printf("entrou mount\n");
             client_pipe_path = strtok(NULL, "|");
+            printf("recebeu client_path:%s\n", client_pipe_path);
             tfs_server_mount(client_pipe_path);
             //tfs_server_mount(strtok(NULL, "|"));
 
             break;
         
         case TFS_OP_CODE_UNMOUNT:
+            printf("entrou unmount\n");
             session_id = atoi(strtok(NULL, "|"));
             tfs_server_unmount(session_id);
             //tfs_server_unmount(atoi(strtok(NULL, "|")));

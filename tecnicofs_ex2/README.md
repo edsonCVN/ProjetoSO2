@@ -34,3 +34,15 @@ O original (v1) era “if ((inumber * (int) sizeof(allocation_state_t)) == 0)”
 
 um macro para cada buffer?????
 posiveis erros do unmount
+
+
+o que fiz de manhã:
+    substitui o asprintf pelo sprintf pq não conseguia retirar o erro.
+    estou a passar os inteiros por referencia nos reads e writes (usando v.global return_value em alguns casos )
+    (void) write para parar de dar o warning (apesar de não saber se será a melhor soulução no futuro)
+
+    para correres os teste:
+    terminal_servidor(em tecnicofs_ex2/fs): ./tfs_server /tmp/srv
+    terminal_cliente(em tecnicofs_ex2): ./tests/client_server_simple_test /tmp/clt /tmp/srv
+    
+    executando o gdb no server (gdb --args ./tfs_server /tmp/srv) conclui que a linha 91 so tfs_server não está a funcionar (fala com o stor para ver a melhor opção, talvez passar tudo em string pelos pipes...)
