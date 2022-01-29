@@ -19,7 +19,7 @@ enum {
     TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED = 7
 };
 
-#define PIPE_PATH_SIZE 40
+#define PATH_SIZE 40
 #define CLIENT_BUFFER_SIZE 42
 #define SERVER_BUFFER_SIZE 47
                     

@@ -52,3 +52,6 @@ o que fiz de manhã:
 
 bug para falar com o stor.
     de forma aparentemente aleatória, à vezes onde o sevidor não lê o código de unmount. e não conseguimos identificar a causa do erro. suspeitamos que pode ser da forma como o sprintf atua nos buffers (?)
+
+
+para escrever/ler, no servidor devemos usar buffer's de tamanho fixo ou do tamnho len dado?

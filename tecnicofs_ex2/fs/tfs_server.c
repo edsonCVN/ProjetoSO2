@@ -29,9 +29,16 @@ int server_init(char const *pipename) {
     }
 
     opened_sessions = 0;
+    tfs_init();
+
+    rx_server_pipe = open(pipename, O_RDONLY);
+    if (rx_server_pipe == -1) {
+        return -1;
+    }
 
     return 0;
 }
+
 /*  Receives the new client's pipe path name.
     If successful retuns the new session_id, else return -1.
 */
@@ -66,9 +73,9 @@ void tfs_server_mount() {
 
     //char buffer[PIPE_PATH_SIZE];
     int return_value = -1;
-    char client_pipe_path[PIPE_PATH_SIZE];
+    char client_pipe_path[PATH_SIZE];
 
-    ssize_t ret = read(rx_server_pipe, client_pipe_path, PIPE_PATH_SIZE);
+    ssize_t ret = read(rx_server_pipe, client_pipe_path, PATH_SIZE);
     if (ret == 0) {
         close(rx_server_pipe);
         return ;
@@ -111,25 +118,127 @@ void tfs_server_mount() {
 void tfs_server_unmount() {
 
     int return_value = -1;
-    char buffer[1];
     int session_id;
     
-    ssize_t ret = read(rx_server_pipe, buffer, 1);
-    if (ret == 0) {
-        close(rx_server_pipe);
+   if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
         return;
-    } else if (ret == -1) {
-        // ret == -1 signals error
-        close(rx_server_pipe);
-        return ; //completar
     }
-
-    session_id = atoi(buffer);
 
     int tx = sessions_tx_table[session_id];
     return_value = delete_session(session_id);
     write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
     close(tx);
+}
+
+void tfs_server_open() {
+    int session_id;
+    char const filename[PATH_SIZE];
+    int flags;
+    int return_value = -1;
+
+    if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+    if(read(rx_server_pipe, filename, PATH_SIZE) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+    if(read(rx_server_pipe, &flags, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+    return_value = tfs_open(filename, flags);
+    write(sessions_tx_table[session_id], &return_value, sizeof(int));
+}
+
+void tfs_server_close() {
+    
+    int session_id;
+    int fhandle;
+    int return_value = -1;
+
+    if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+
+    if(read(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+
+    return_value = tfs_close(fhandle);
+    write(sessions_tx_table[session_id], &return_value, sizeof(int));
+}
+
+void tfs_server_write() {
+    int session_id; 
+    int fhandle; 
+    size_t len; 
+    //void const *buffer;
+    int return_value = -1;
+
+    if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+    
+    if(read(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+
+    if(read(rx_server_pipe, &len, sizeof(size_t)) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+
+    char buffer[len];
+    if(read(rx_server_pipe, buffer, len) < 0) {
+        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        return;
+    }
+
+    return_value = tfs_write(fhandle, buffer, len);
+    write(sessions_tx_table[session_id], &return_value, sizeof(int));
+}
+
+void tfs_server_read() {
+    int session_id; 
+    int fhandle; 
+    size_t len; 
+    int read_len = -1;
+
+
+    if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &read_len, sizeof(int));
+        return;
+    }
+    
+    if(read(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        write(sessions_tx_table[session_id], &read_len, sizeof(int));
+        return;
+    }
+
+    if(read(rx_server_pipe, &len, sizeof(size_t)) < 0) {
+        write(sessions_tx_table[session_id], &read_len, sizeof(int));
+        return;
+    }
+    
+    char buffer[len];
+    read_len = tfs_read(fhandle, (void*) buffer, len);
+
+    if(write(sessions_tx_table[session_id], &read_len, sizeof(int)) < 0) { 
+        write(sessions_tx_table[session_id], &read_len, sizeof(int));
+        return;
+    }
+
+    if(!(read_len > 0 && write(sessions_tx_table[session_id], buffer, read_len) > 0)) { 
+        read_len = -1;
+    }
+    write(sessions_tx_table[session_id], &read_len, sizeof(int));
 }
 
 int main(int argc, char **argv) {
@@ -147,70 +256,76 @@ int main(int argc, char **argv) {
     }
 
     while (true) { //com open e close do pipe clients->server ?
-        char buffer[2];
-        // opens clients->server pipe for reading
-        rx_server_pipe = open(pipename, O_RDONLY);
-        if (rx_server_pipe == -1) {
-            return -1;
-        }
-
-        ssize_t ret = read(rx_server_pipe, buffer, 1);
         
-        buffer[ret] = 0;
+        char op_code;
+
+        ssize_t ret = read(rx_server_pipe, &op_code, sizeof(char));
         
         if (ret == 0) {
-           
-            close(rx_server_pipe);
+            // nothing to read
             continue;
         } else if (ret == -1) {
             // ret == -1 signals error
             close(rx_server_pipe);
             exit(EXIT_FAILURE);
         }
-        buffer[ret] = 0;
-        int op_code = atoi(buffer);
-        
+
         switch (op_code) {
 
         case TFS_OP_CODE_MOUNT:
-
+            printf("\t\tCURRENT OP_CODE:%d\n", op_code);
             printf("entrou mount\n");
             tfs_server_mount();
             printf("saiu mount\n");
             break;
         
         case TFS_OP_CODE_UNMOUNT:
+            printf("\t\tCURRENT OP_CODE:%d\n", op_code);
             printf("entrou unmount\n");
             tfs_server_unmount();
             printf("saiu unmount\n");
             break;
         
         case TFS_OP_CODE_OPEN:
-            /* code */
+            printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+            printf("entrou open\n");
+            tfs_server_open();
+            printf("saiu open\n");
             break;
         
         case TFS_OP_CODE_CLOSE:
-            /* code */
+            printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+            printf("entrou close\n");
+            tfs_server_close();
+            printf("saiu close\n");
             break;
 
         case TFS_OP_CODE_WRITE:
-            /* code */
+            printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+            printf("entrou write\n");
+            tfs_server_write();
+            printf("saiu write\n");
             break;
         
         case TFS_OP_CODE_READ:
-            /* code */
+            printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+            printf("entrou read\n");
+            tfs_server_read();
+            printf("saiu read\n");
             break;
 
         case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
             /* code */
             //unlink do server_pipe
+            //e tfs_destroy
+            close(rx_server_pipe);
             break;
         
         default:
             break;
         }
 
-        close(rx_server_pipe);
+        
     }
      
     //close do pipe do servidor no do destroy?

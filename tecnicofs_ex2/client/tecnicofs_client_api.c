@@ -13,31 +13,20 @@
 int session_id = -1;
 int tx_server_pipe = -1;
 int rx_client_pipe = -1;
-char c_pipe_path[PIPE_PATH_SIZE];
+char c_pipe_path[PATH_SIZE];
 
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
+    char code = TFS_OP_CODE_MOUNT;
     char input[40];
-    char input1[2];
     int output = -1;
 
-    memset(input, '\0', PIPE_PATH_SIZE);
-    memcpy(input, client_pipe_path, strlen(client_pipe_path));
 
-    memset(input1, '\0', 2);
-    sprintf(input1, "%d", TFS_OP_CODE_MOUNT);
+    memset(input, '\0', PATH_SIZE);
+    memcpy(input, client_pipe_path, strlen(client_pipe_path));
     
-    printf("input1: %.1s\n", input1);
     printf("input: %s\n", input);
     
-/*
-    //buffer's initialization
-    memset(input, '\0', 41);
-    sprintf(input, "%c%s", TFS_OP_CODE_MOUNT, client_pipe_path);
-    memcpy(c_pipe_path, client_pipe_path, strlen(client_pipe_path));
-    c_pipe_path[strlen(client_pipe_path)] = 0;*/
-
-
     if (unlink(client_pipe_path) != 0 && errno != ENOENT) {
         return -1;
     }
@@ -53,26 +42,23 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
         return -1;
     }
     printf("client buffer: %s\n", input);
-    /*
-    if(write(tx_server_pipe, input, 41) < 0) {
-        return -1;
-    }*/
-
-    write(tx_server_pipe, input1, 1);
-    write(tx_server_pipe, input, PIPE_PATH_SIZE);
     
-    //assumindo que já foi aberto para escrita no server
+    if (write(tx_server_pipe, &code, sizeof(char)) < 0) {
+       return -1;
+    }
+    if (write(tx_server_pipe, input, PATH_SIZE) < 0) {
+        return -1;
+    }
+
     rx_client_pipe = open(client_pipe_path, O_RDONLY);
     if(rx_client_pipe == -1) {
         return -1;
     }
     
-    //if(read(rx_client_pipe, output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
     if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) {
         return -1;
     }
     
-    //session_id = output;
     session_id = output;
     printf("recebeu session_id: %d\n", session_id);
 
@@ -81,25 +67,18 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 
 int tfs_unmount() {
     
-    char input[2];
-    char input1[2];
+    char code = TFS_OP_CODE_UNMOUNT;
     int output = -1;
 
-    //buffer's initialization
-    memset(input, '\0', 2);
-    sprintf(input, "%d", TFS_OP_CODE_UNMOUNT);
-    memset(input1, '\0', 2);
-    sprintf(input1, "%d", session_id);
-   
-    if(write(tx_server_pipe, input, 1) < 0) {
+    if (write(tx_server_pipe, &code, sizeof(char)) < 0) {
+       return -1;
+    }
+
+    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
         return -1;
     }
 
-    if(write(tx_server_pipe, input1, 1) < 0) {
-        return -1;
-    }
-
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { //posso ler diretamente para um inteiro????? e ver logo o output???
+    if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { 
         return -1;
     }
 
@@ -115,22 +94,120 @@ int tfs_unmount() {
 
 int tfs_open(char const *name, int flags) {
     
-    return -1;
+    char code = TFS_OP_CODE_OPEN;
+    char filename[PATH_SIZE];
+    int output = -1;
+    
+    memset(filename, '\0', PATH_SIZE);
+    memcpy(filename, name, strlen(name));    
+
+    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, filename, PATH_SIZE) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &flags, sizeof(int)) < 0) {
+        return -1;
+    }
+
+    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+        return -1;
+    }
+
+    return output;
 }
 
 int tfs_close(int fhandle) {
-    /* TODO: Implement this */
-    return -1;
+    
+    char code = TFS_OP_CODE_CLOSE;
+    int output = -1;
+
+    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        return -1;
+    }
+
+    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+        return -1;
+    }
+    return output;
 }
 
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
-    /* TODO: Implement this */
-    return -1;
+    
+    char code = TFS_OP_CODE_WRITE;
+    int output = -1;
+    
+    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return -1;
+    }
+    
+    if(write(tx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &len, sizeof(size_t)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, buffer, len) < 0) {
+        return -1;
+    }
+
+    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+        return -1;
+    }
+
+    return (ssize_t) output;
 }
 
 ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
-    /* TODO: Implement this */
-    return -1;
+    
+    char code = TFS_OP_CODE_READ;
+    int read_len = -1;
+
+    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return -1;
+    }
+    
+    if(write(tx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        return -1;
+    }
+
+    if(write(tx_server_pipe, &len, sizeof(size_t)) < 0) {
+        return -1;
+    }
+
+    if(read(rx_client_pipe, &read_len, sizeof(int)) < 0) { 
+        return -1;
+    }
+
+    if(!(read_len >= 0 && read(rx_client_pipe, buffer, read_len) > 0)) { 
+        return -1;
+    }
+    return (ssize_t)read_len;
 }
 
 int tfs_shutdown_after_all_closed() {
