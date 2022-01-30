@@ -80,7 +80,7 @@ int tfs_unmount() {
     }
     
     close(tx_server_pipe);
-    sleep(1);
+    //sleep(1);
     close(rx_client_pipe);
     
     if (unlink(c_pipe_path) != 0 && errno != ENOENT) {

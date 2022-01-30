@@ -232,15 +232,17 @@ void tfs_server_read() {
     char buffer[len];
     read_len = tfs_read(fhandle, (void*) buffer, len);
 
-    if(write(sessions_tx_table[session_id], &read_len, sizeof(int)) < 0) { 
+    if(write(sessions_tx_table[session_id], &read_len, sizeof(int)) < 0) {
+        read_len = -1;
         write(sessions_tx_table[session_id], &read_len, sizeof(int));
         return;
     }
 
-    if(!(read_len > 0 && write(sessions_tx_table[session_id], buffer, read_len) > 0)) { 
-        read_len = -1;
+    if(read_len > 0) { 
+        write(sessions_tx_table[session_id], buffer, read_len);
     }
-    write(sessions_tx_table[session_id], &read_len, sizeof(int));
+    
+    //write(sessions_tx_table[session_id], &read_len, sizeof(int));
 }
 
 int main(int argc, char **argv) {
