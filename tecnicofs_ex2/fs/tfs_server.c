@@ -120,15 +120,17 @@ void tfs_server_unmount() {
     int return_value = -1;
     int session_id;
     
-   if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+    if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
         write(sessions_tx_table[session_id], &return_value, sizeof(int));
         return;
     }
 
     int tx = sessions_tx_table[session_id];
     return_value = delete_session(session_id);
+    printf("aqui\n");
     write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
     close(tx);
+    
 }
 
 void tfs_server_open() {
@@ -318,7 +320,7 @@ int main(int argc, char **argv) {
             /* code */
             //unlink do server_pipe
             //e tfs_destroy
-            close(rx_server_pipe);
+            //close(rx_server_pipe);
             break;
         
         default:

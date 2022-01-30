@@ -18,12 +18,12 @@ char c_pipe_path[PATH_SIZE];
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
     char code = TFS_OP_CODE_MOUNT;
-    char input[40];
+    char input[1 + PATH_SIZE];
     int output = -1;
 
-
-    memset(input, '\0', PATH_SIZE);
-    memcpy(input, client_pipe_path, strlen(client_pipe_path));
+    memset(input, '\0', 1 + PATH_SIZE);
+    input[0] = code;
+    memcpy(input + 1, client_pipe_path, strlen(client_pipe_path));
     
     printf("input: %s\n", input);
     
@@ -43,10 +43,7 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     }
     printf("client buffer: %s\n", input);
     
-    if (write(tx_server_pipe, &code, sizeof(char)) < 0) {
-       return -1;
-    }
-    if (write(tx_server_pipe, input, PATH_SIZE) < 0) {
+    if (write(tx_server_pipe, input, 1 + PATH_SIZE) < 0) {
         return -1;
     }
 
@@ -68,22 +65,23 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
 int tfs_unmount() {
     
     char code = TFS_OP_CODE_UNMOUNT;
+    char input[1 + sizeof(int)];
     int output = -1;
 
-    if (write(tx_server_pipe, &code, sizeof(char)) < 0) {
-       return -1;
-    }
+    input[0] = code;
+    memcpy(input + 1, &session_id, sizeof(int));
 
-    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
+    if(write(tx_server_pipe,input, 1 + sizeof(int)) < 0) {
         return -1;
     }
 
     if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { 
         return -1;
     }
-
-    close(rx_client_pipe);
+    
     close(tx_server_pipe);
+    sleep(1);
+    close(rx_client_pipe);
     
     if (unlink(c_pipe_path) != 0 && errno != ENOENT) {
         return -1;
@@ -95,25 +93,17 @@ int tfs_unmount() {
 int tfs_open(char const *name, int flags) {
     
     char code = TFS_OP_CODE_OPEN;
-    char filename[PATH_SIZE];
+    char input[1 + 2*sizeof(int) + PATH_SIZE];
     int output = -1;
     
-    memset(filename, '\0', PATH_SIZE);
-    memcpy(filename, name, strlen(name));    
+    memset(input, '\0', 1 + sizeof(int) + PATH_SIZE);
 
-    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
-        return -1;
-    }
+    input[0] = code;
+    memcpy(input + 1, &session_id, sizeof(int));
+    memcpy(input + 1 + sizeof(int), name, strlen(name)); 
+    memcpy(input + 1 + sizeof(int) + PATH_SIZE, &flags, sizeof(int));   
 
-    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
-        return -1;
-    }
-
-    if(write(tx_server_pipe, filename, PATH_SIZE) < 0) {
-        return -1;
-    }
-
-    if(write(tx_server_pipe, &flags, sizeof(int)) < 0) {
+    if(write(tx_server_pipe, &input, 1 + 2*sizeof(int) + PATH_SIZE) < 0) {
         return -1;
     }
 
@@ -127,20 +117,17 @@ int tfs_open(char const *name, int flags) {
 int tfs_close(int fhandle) {
     
     char code = TFS_OP_CODE_CLOSE;
+    char input[1 + 2*sizeof(int)];
     int output = -1;
 
-    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
+    input[0] = code;
+    memcpy(input + 1, &session_id, sizeof(int));
+    memcpy(input + 1 + sizeof(int), &fhandle, sizeof(int));
+
+    if(write(tx_server_pipe, &input, 1 + 2*sizeof(int)) < 0) {
         return -1;
     }
-
-    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
-        return -1;
-    }
-
-    if(write(tx_server_pipe, &fhandle, sizeof(int)) < 0) {
-        return -1;
-    }
-
+    
     if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }
@@ -150,25 +137,16 @@ int tfs_close(int fhandle) {
 ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     
     char code = TFS_OP_CODE_WRITE;
+    char input[1 + 2*sizeof(int)+ sizeof(size_t) + len];
     int output = -1;
     
-    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
-        return -1;
-    }
+    input[0] = code;
+    memcpy(input + 1, &session_id, sizeof(int));
+    memcpy(input + 1 + sizeof(int), &fhandle, sizeof(int));
+    memcpy(input + 1 + 2*sizeof(int), &len, sizeof(size_t));
+    memcpy(input + 1 + 2*sizeof(int) + sizeof(size_t), buffer, len);
 
-    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
-        return -1;
-    }
-    
-    if(write(tx_server_pipe, &fhandle, sizeof(int)) < 0) {
-        return -1;
-    }
-
-    if(write(tx_server_pipe, &len, sizeof(size_t)) < 0) {
-        return -1;
-    }
-
-    if(write(tx_server_pipe, buffer, len) < 0) {
+    if(write(tx_server_pipe, input, 1 + 2*sizeof(int)+ sizeof(size_t) + len) < 0) {
         return -1;
     }
 
@@ -182,21 +160,15 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
 ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     
     char code = TFS_OP_CODE_READ;
+    char input[1 + 2*sizeof(int) + sizeof(size_t)];
     int read_len = -1;
 
-    if(write(tx_server_pipe, &code, sizeof(char)) < 0) {
-        return -1;
-    }
+    input[0] = code;
+    memcpy(input + 1, &session_id, sizeof(int));
+    memcpy(input + 1 + sizeof(int), &fhandle, sizeof(int));
+    memcpy(input + 1 + 2*sizeof(int), &len, sizeof(size_t));
 
-    if(write(tx_server_pipe, &session_id, sizeof(int)) < 0) {
-        return -1;
-    }
-    
-    if(write(tx_server_pipe, &fhandle, sizeof(int)) < 0) {
-        return -1;
-    }
-
-    if(write(tx_server_pipe, &len, sizeof(size_t)) < 0) {
+    if(write(tx_server_pipe, input, 1 + 2*sizeof(int) + sizeof(size_t)) < 0) {
         return -1;
     }
 
