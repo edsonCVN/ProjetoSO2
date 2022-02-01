@@ -6,14 +6,105 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
-int sessions_tx_table[S];
-allocation_state_t free_sessions[S];
+typedef struct {
+    int session_tx;
+    allocation_state_t session_state;
+    pthread_t session_tid;
+    bool buffer_on;
+    Buffer *buffer;
+} Session;
+
+typedef struct {
+    char op_code;
+    char const filename[PATH_SIZE];
+    int flags;
+    int fhandle;
+    size_t len; 
+} Buffer;
+
+
 int opened_sessions;
 int rx_server_pipe;
+Session sessions_table[S];
+
+void *worker_thread(void* session_id) {
+
+    int id = (int) session_id;
+
+    while (sessions_table[id].buffer_on) {
+
+        switch ((sessions_table[id].buffer).op_code) {
+
+            case TFS_OP_CODE_MOUNT:
+                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+                printf("entrou mount\n");
+                tfs_server_mount();
+                printf("saiu mount\n");
+                break;
+            
+            case TFS_OP_CODE_UNMOUNT:
+                
+                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+                printf("entrou unmount\n");
+                tfs_server_unmount();
+                printf("saiu unmount\n");
+                break;
+            
+            case TFS_OP_CODE_OPEN:
+                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+                printf("entrou open\n");
+                tfs_server_open();
+                printf("saiu open\n");
+                break;
+            
+            case TFS_OP_CODE_CLOSE:
+                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+                printf("entrou close\n");
+                tfs_server_close();
+                printf("saiu close\n");
+                break;
+
+            case TFS_OP_CODE_WRITE:
+                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+                printf("entrou write\n");
+                tfs_server_write();
+                printf("saiu write\n");
+                break;
+            
+            case TFS_OP_CODE_READ:
+                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
+                printf("entrou read\n");
+                tfs_server_read();
+                printf("saiu read\n");
+                break;
+
+            case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
+                /* code */
+                //unlink do server_pipe
+                //e tfs_destroy
+                //close(rx_server_pipe);
+                break;
+            
+            default:
+                break;
+            }
+    }
+}
+
+
 
 int server_init(char const *pipename) {
     
+    /*
+    if(signal(SIGPIPE, SIG_IGN) == SIG_ERR){
+        printf("[ERROR]\n");
+        return -1;
+    }
+    SIG_IGN - sig ignore
+    */
+   
     if (unlink(pipename) != 0 && errno != ENOENT) {
         return -1;
     }
@@ -25,7 +116,10 @@ int server_init(char const *pipename) {
 
    
     for(int i = 0; i < S; i++) {
-        free_sessions[i] = FREE;
+        sessions_table[i].session_tx = -1;
+        sessions_table[i].session_state = FREE;
+        pthread_init(sessions_table[i].session_tid, NULL);
+        sessions_table[i].buffer = NULL;
     }
 
     opened_sessions = 0;
@@ -45,9 +139,9 @@ int server_init(char const *pipename) {
 int add_new_session (int client_pipe_tx) {
     
     for (int i = 0; i < S; i++) {
-        if (free_sessions[i] == FREE) {
-            free_sessions[i] = TAKEN;
-            sessions_tx_table[i] = client_pipe_tx;
+        if (sessions_table[i].session_state == FREE) {
+            sessions_table[i].session_state = TAKEN;
+            sessions_table[i].session_tx = client_pipe_tx;
             opened_sessions++;
             return i;
         }
@@ -56,9 +150,9 @@ int add_new_session (int client_pipe_tx) {
 }
 
 int delete_session (int session_id) {
-    if (free_sessions[session_id] == TAKEN) {
-        free_sessions[session_id] = FREE;
-        sessions_tx_table[session_id] = -1;
+    if (sessions_table[session_id].session_state == TAKEN) {
+        sessions_table[session_id].session_state = FREE;
+        sessions_table[session_id].session_tx = -1;
         opened_sessions--;
         return 0;
     }
@@ -267,6 +361,8 @@ int main(int argc, char **argv) {
         
         if (ret == 0) {
             // nothing to read
+            close
+            op
             continue;
         } else if (ret == -1) {
             // ret == -1 signals error
@@ -284,6 +380,7 @@ int main(int argc, char **argv) {
             break;
         
         case TFS_OP_CODE_UNMOUNT:
+            
             printf("\t\tCURRENT OP_CODE:%d\n", op_code);
             printf("entrou unmount\n");
             tfs_server_unmount();
