@@ -8,12 +8,19 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
+#define N 3
+
 typedef struct {
     int session_tx;
     allocation_state_t session_state;
     pthread_t session_tid;
-    bool buffer_on;
-    Buffer *buffer;
+    //bool buffer_on;
+    int prodptr; //ini
+    int consptr; //ini
+    int count; //ini 
+    Request buffer[N];
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
 } Session;
 
 typedef struct {
@@ -22,62 +29,45 @@ typedef struct {
     int flags;
     int fhandle;
     size_t len; 
-} Buffer;
+} Request;
 
-
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int opened_sessions;
 int rx_server_pipe;
 Session sessions_table[S];
 
 void *worker_thread(void* session_id) {
 
-    int id = (int) session_id;
+    while(true) {
+        int id = (int) session_id; //testar
+        char op_code = sessions_table[id].buffer->op_code;
 
-    while (sessions_table[id].buffer_on) {
+        //lock
+        while (sessions_table[id].buffer_on) {
+            pthread_cond_wait(&sessions_table[id].cond, NULL);
+        }
+        //unlock?
 
-        switch ((sessions_table[id].buffer).op_code) {
+        switch (op_code) {
 
-            case TFS_OP_CODE_MOUNT:
-                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
-                printf("entrou mount\n");
-                tfs_server_mount();
-                printf("saiu mount\n");
-                break;
-            
             case TFS_OP_CODE_UNMOUNT:
-                
-                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
-                printf("entrou unmount\n");
-                tfs_server_unmount();
-                printf("saiu unmount\n");
+                //falta
                 break;
             
             case TFS_OP_CODE_OPEN:
-                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
-                printf("entrou open\n");
-                tfs_server_open();
-                printf("saiu open\n");
+               
                 break;
             
             case TFS_OP_CODE_CLOSE:
-                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
-                printf("entrou close\n");
-                tfs_server_close();
-                printf("saiu close\n");
+                
                 break;
 
             case TFS_OP_CODE_WRITE:
-                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
-                printf("entrou write\n");
-                tfs_server_write();
-                printf("saiu write\n");
+                
                 break;
             
             case TFS_OP_CODE_READ:
-                printf("\t\tCURRENT OP_CODE:%d\n", op_code);
-                printf("entrou read\n");
-                tfs_server_read();
-                printf("saiu read\n");
+                
                 break;
 
             case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
@@ -89,7 +79,10 @@ void *worker_thread(void* session_id) {
             
             default:
                 break;
-            }
+            
+        }
+        sessions_table[id].buffer_on = false;
+        //free(Request)
     }
 }
 
@@ -119,7 +112,8 @@ int server_init(char const *pipename) {
         sessions_table[i].session_tx = -1;
         sessions_table[i].session_state = FREE;
         pthread_init(sessions_table[i].session_tid, NULL);
-        sessions_table[i].buffer = NULL;
+        sessions_table[i].buffer = NULL; //?
+        pthread_cond_init(&sessions_table[i].cond, NULL);
     }
 
     opened_sessions = 0;
@@ -234,19 +228,33 @@ void tfs_server_open() {
     int return_value = -1;
 
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
-    if(read(rx_server_pipe, filename, PATH_SIZE) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+
+    //Buffer *current_buffer = &sessions_table[session_id].buffer;
+
+    Request *current_request = malloc(sizeof(Request));
+
+
+
+    if(read(rx_server_pipe, current_buffer->filename, PATH_SIZE) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
-    if(read(rx_server_pipe, &flags, sizeof(int)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    if(read(rx_server_pipe, &current_buffer->flags, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
+    
+    sessions_table[session_id].buffer_on = true;
+    
+    broadcast()
+    //1 ou S cond var's
+    /*
     return_value = tfs_open(filename, flags);
     write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    */
 }
 
 void tfs_server_close() {
@@ -361,8 +369,11 @@ int main(int argc, char **argv) {
         
         if (ret == 0) {
             // nothing to read
-            close
-            op
+            close(rx_server_pipe);
+            rx_server_pipe = open(pipename, O_RDONLY);
+            if (rx_server_pipe == -1) {
+                return -1;
+            }
             continue;
         } else if (ret == -1) {
             // ret == -1 signals error
@@ -420,6 +431,7 @@ int main(int argc, char **argv) {
             //unlink do server_pipe
             //e tfs_destroy
             //close(rx_server_pipe);
+            //destroy thread, mutex, cond
             break;
         
         default:
