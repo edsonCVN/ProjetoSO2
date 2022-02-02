@@ -65,3 +65,7 @@ só precisamos de uma posição do buffer
 já foi consumido(basta sobrescrever)
 
 e os locks?
+
+PÔR LOCKS NO MOUNT E UNMOUNT
+
+SIGNAL OU BROADCAST

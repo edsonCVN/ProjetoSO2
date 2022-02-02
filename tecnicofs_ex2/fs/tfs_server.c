@@ -8,20 +8,20 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
-#define N 3
+#define N 10
 
+
+/* VERIFICAR TODAS AS CONDIÇÕES DE ERRO, LOCKS, UNLOCKS, INITS...*/
 typedef struct {
     int session_tx;
     allocation_state_t session_state;
     pthread_t session_tid;
-    //bool buffer_on;
-    int prodptr; //ini
-    int consptr; //ini
-    int count; //ini 
-    Request buffer[N];
+    bool buffer_on;
     pthread_cond_t cond;
-    pthread_mutex_t mutex;
+    pthread_mutex_t mutex; //falta inicializar
 } Session;
+
+Request buffer[S];
 
 typedef struct {
     char op_code;
@@ -29,6 +29,7 @@ typedef struct {
     int flags;
     int fhandle;
     size_t len; 
+    void * buf;
 } Request;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -40,37 +41,45 @@ void *worker_thread(void* session_id) {
 
     while(true) {
         int id = (int) session_id; //testar
-        char op_code = sessions_table[id].buffer->op_code;
+        int return_value = -1;
 
-        //lock
-        while (sessions_table[id].buffer_on) {
-            pthread_cond_wait(&sessions_table[id].cond, NULL);
+        if(pthread_mutex_lock(&sessions_table[id].mutex) < 0) {
+            write(&sessions_table[id].session_tx, &return_value, sizeof(int)); //POR FAZER TRATAMENTO DE ERROS
+            continue;
+        }
+        while (!sessions_table[id].buffer_on) {
+            pthread_cond_wait(&sessions_table[id].cond, &sessions_table->mutex);
         }
         //unlock?
 
-        switch (op_code) {
+        switch (buffer[id]->op_code) {
 
             case TFS_OP_CODE_UNMOUNT:
                 //falta
                 break;
             
             case TFS_OP_CODE_OPEN:
-               
+                return_value = tfs_open(buffer[id]->filename, buffer[id]->flags);
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
                 break;
             
             case TFS_OP_CODE_CLOSE:
-                
+                return_value = tfs_close(buffer[id]->fhandle);
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
                 break;
 
             case TFS_OP_CODE_WRITE:
-                
+                return_value = tfs_write(buffer[id]->fhandle, buffer[id]->buf, buffer[id]->len);
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                free(buffer[id]->buf);
+                buffer[id]->buf = NULL;
                 break;
             
             case TFS_OP_CODE_READ:
                 
                 break;
 
-            case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
+            case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED: //isto não devia ser feito pela tarefa recetora? (assumindo que era o shutdown completo do servidor)
                 /* code */
                 //unlink do server_pipe
                 //e tfs_destroy
@@ -82,7 +91,10 @@ void *worker_thread(void* session_id) {
             
         }
         sessions_table[id].buffer_on = false;
-        //free(Request)
+        if(pthread_mutex_unlock(&sessions_table[id].mutex) < 0) {
+            return_value = -1;
+            write(&sessions_table[id].session_tx, &return_value, sizeof(int)); //POR FAZER TRATAMENTO DE ERROS
+        }
     }
 }
 
@@ -111,9 +123,19 @@ int server_init(char const *pipename) {
     for(int i = 0; i < S; i++) {
         sessions_table[i].session_tx = -1;
         sessions_table[i].session_state = FREE;
-        pthread_init(sessions_table[i].session_tid, NULL);
-        sessions_table[i].buffer = NULL; //?
-        pthread_cond_init(&sessions_table[i].cond, NULL);
+        sessions_table[i].buffer_on = false;
+        if(pthread_init(sessions_table[i].session_tid, NULL) < 0) {
+            return -1;
+        }
+        if(pthread_mutex_init(&sessions_table[i].mutex, NULL) < 0) {
+            return -1;
+        }
+        if(pthread_cond_init(&sessions_table[i].cond, NULL) < 0) {
+            return -1;
+        }
+        if (pthread_create(&sessions_table[i].session_tid, NULL, worker_thread, (void *) i) < 0) {
+            return -1;
+        }
     }
 
     opened_sessions = 0;
@@ -223,8 +245,6 @@ void tfs_server_unmount() {
 
 void tfs_server_open() {
     int session_id;
-    char const filename[PATH_SIZE];
-    int flags;
     int return_value = -1;
 
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
@@ -232,24 +252,19 @@ void tfs_server_open() {
         return;
     }
 
-    //Buffer *current_buffer = &sessions_table[session_id].buffer;
-
-    Request *current_request = malloc(sizeof(Request));
-
-
-
-    if(read(rx_server_pipe, current_buffer->filename, PATH_SIZE) < 0) {
+    if(read(rx_server_pipe, buffer[session_id]->filename, PATH_SIZE) < 0) {
         write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
-    if(read(rx_server_pipe, &current_buffer->flags, sizeof(int)) < 0) {
+    if(read(rx_server_pipe, &buffer[session_id]->flags, sizeof(int)) < 0) {
         write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
     
+    buffer[session_id]->op_code = TFS_OP_CODE_OPEN;
     sessions_table[session_id].buffer_on = true;
+    pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
     
-    broadcast()
     //1 ou S cond var's
     /*
     return_value = tfs_open(filename, flags);
@@ -260,21 +275,21 @@ void tfs_server_open() {
 void tfs_server_close() {
     
     int session_id;
-    int fhandle;
     int return_value = -1;
 
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
-    if(read(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    if(read(rx_server_pipe, &buffer[session_id]->fhandle, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
-    return_value = tfs_close(fhandle);
-    write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    buffer[session_id]->op_code = TFS_OP_CODE_CLOSE;
+    sessions_table[session_id].buffer_on = true;
+    pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
 }
 
 void tfs_server_write() {
@@ -285,28 +300,39 @@ void tfs_server_write() {
     int return_value = -1;
 
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
     
-    if(read(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    if(read(rx_server_pipe, &buffer[session_id]->fhandle, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
-    if(read(rx_server_pipe, &len, sizeof(size_t)) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    if(read(rx_server_pipe, &buffer[session_id]->len, sizeof(size_t)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
-    char buffer[len];
-    if(read(rx_server_pipe, buffer, len) < 0) {
-        write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    //char buffer[len]; //para dentro da thread
+
+    void *buff = malloc(sizeof(char)* len);
+
+
+    if(read(rx_server_pipe, buff, len) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
+    buffer[session_id]->buf = buff;
+    
+    buffer[session_id]->op_code = TFS_OP_CODE_WRITE;
+    sessions_table[session_id].buffer_on = true;
+    pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
+    /*
     return_value = tfs_write(fhandle, buffer, len);
     write(sessions_tx_table[session_id], &return_value, sizeof(int));
+    */
 }
 
 void tfs_server_read() {
