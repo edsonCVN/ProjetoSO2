@@ -36,6 +36,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int opened_sessions;
 int rx_server_pipe;
 Session sessions_table[S];
+char *pipename;
 
 void *worker_thread(void* session_id) {
 
@@ -89,10 +90,21 @@ void *worker_thread(void* session_id) {
                 break;
 
             case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED: //isto não devia ser feito pela tarefa recetora? (assumindo que era o shutdown completo do servidor)
-                /* code */
-                //unlink do server_pipe
-                //e tfs_destroy
-                //close(rx_server_pipe);
+                return_value = tfs_destroy_after_all_closed();
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                for (int i = 0; i < S; i++) {
+                    if(sessions_table[i].session_state == TAKEN) {
+                        return_value = delete_session(i);
+                        close(sessions_table[i].session_tx);
+                        
+                    }
+                    pthread_mutex_destroy(&sessions_table[i].mutex);
+                    pthread_cond_destroy(&sessions_table[i].cond);
+                }
+                close(rx_server_pipe);
+                if (unlink(pipename) != 0 && errno != ENOENT) {
+                    return;
+                }
                 break;
             
             default:
@@ -109,7 +121,7 @@ void *worker_thread(void* session_id) {
 
 
 
-int server_init(char const *pipename) {
+int server_init() {
     
     /*
     if(signal(SIGPIPE, SIG_IGN) == SIG_ERR){
@@ -118,7 +130,7 @@ int server_init(char const *pipename) {
     }
     SIG_IGN - sig ignore
     */
-   
+
     if (unlink(pipename) != 0 && errno != ENOENT) {
         return -1;
     }
@@ -386,7 +398,7 @@ void tfs_server_read() {
     //write(sessions_tx_table[session_id], &read_len, sizeof(int));*/
 }
 
-void tfs_shutdown_after_all_closed(char *pipename) {
+void tfs_shutdown_after_all_closed() {
     int session_id; 
     int return_value = -1;
 
@@ -395,22 +407,7 @@ void tfs_shutdown_after_all_closed(char *pipename) {
         return;
     }
 
-    return_value = tfs_destroy_after_all_closed();
-    write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
-    for (int id = 0; id < S; id++) {
-        int tx = sessions_table[id].session_tx;
-        pthread_mutex_destroy(&sessions_table[session_id].mutex);
-        pthread_cond_destroy(&sessions_table[session_id].cond);
-        return_value = delete_session(id);
-        write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
-        close(tx);
-    }
     
-    close(rx_server_pipe);
-
-    if (unlink(pipename) != 0 && errno != ENOENT) {
-        return;
-    }
     
 }
 
@@ -421,11 +418,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    char *pipename = argv[1];
+    char *pipename_main = argv[1];
+    pipename = pipename_main;
     printf("Starting TecnicoFS server with pipe called %s\n", pipename);
 
-    if(server_init(pipename) < 0) {
-        exit(EXIT_FAILURE);
+    if(server_init() < 0) {
+        exit(EXIT_FAILURE);//tratar
     }
 
     while (true) { //com open e close do pipe clients->server ?
