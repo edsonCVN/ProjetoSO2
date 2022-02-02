@@ -38,88 +38,7 @@ int rx_server_pipe;
 Session sessions_table[S];
 char *pipename;
 
-void *worker_thread(void* session_id) {
-
-    while(true) {
-        int id = *((int*)session_id); //testar
-        int return_value = -1;
-
-        if(pthread_mutex_lock(&sessions_table[id].mutex) < 0) {
-            write(sessions_table[id].session_tx, &return_value, sizeof(int)); //POR FAZER TRATAMENTO DE ERROS
-            continue;
-        }
-        while (!sessions_table[id].buffer_on) {
-            pthread_cond_wait(&sessions_table[id].cond, &sessions_table->mutex);
-        }
-        //unlock?
-
-        switch (buffer[id].op_code) {
-
-            case TFS_OP_CODE_UNMOUNT:
-                //falta
-                break;
-            
-            case TFS_OP_CODE_OPEN:
-                return_value = tfs_open(buffer[id].filename, buffer[id].flags);
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
-                break;
-            
-            case TFS_OP_CODE_CLOSE:
-                return_value = tfs_close(buffer[id].fhandle);
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
-                break;
-
-            case TFS_OP_CODE_WRITE:
-                return_value = tfs_write(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
-                free(buffer[id].buf);
-                buffer[id].buf = NULL;
-                break;
-            
-            case TFS_OP_CODE_READ:  
-                return_value = tfs_read(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
-                if(write(sessions_table[id].session_tx, &return_value, sizeof(int)) < 0) {
-                    return_value = -1;
-                    write(sessions_table[id].session_tx, &return_value, sizeof(int));
-                }
-                if(return_value > 0) { 
-                    write(sessions_table[id].session_tx, buffer[id].buf, return_value);
-                }
-                free(buffer[id].buf);
-                buffer[id].buf = NULL;
-                break;
-
-            case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED: //isto não devia ser feito pela tarefa recetora? (assumindo que era o shutdown completo do servidor)
-                return_value = tfs_destroy_after_all_closed();
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
-                for (int i = 0; i < S; i++) {
-                    if(sessions_table[i].session_state == TAKEN) {
-                        return_value = delete_session(i);
-                        close(sessions_table[i].session_tx);
-                        
-                    }
-                    pthread_mutex_destroy(&sessions_table[i].mutex);
-                    pthread_cond_destroy(&sessions_table[i].cond);
-                }
-                close(rx_server_pipe);
-                if (unlink(pipename) != 0 && errno != ENOENT) {
-                    return;
-                }
-                break;
-            
-            default:
-                break;
-            
-        }
-        sessions_table[id].buffer_on = false;
-        if(pthread_mutex_unlock(&sessions_table[id].mutex) < 0) {
-            return_value = -1;
-            write(sessions_table[id].session_tx, &return_value, sizeof(int)); //POR FAZER TRATAMENTO DE ERROS
-        }
-    }
-}
-
-
+void *worker_thread(void* session_id);
 
 int server_init() {
     
@@ -400,15 +319,98 @@ void tfs_server_read() {
 
 void tfs_shutdown_after_all_closed() {
     int session_id; 
-    int return_value = -1;
 
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
         write(sessions_table[session_id].session_tx, &session_id, sizeof(int));
         return;
     }
 
+    buffer[session_id].op_code = TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED;
+    sessions_table[session_id].buffer_on = true;
+    pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
+
     
-    
+}
+
+void *worker_thread(void* session_id) {
+
+    while(true) {
+        int id = *((int*)session_id); //testar
+        int return_value = -1;
+
+        if(pthread_mutex_lock(&sessions_table[id].mutex) < 0) {
+            write(sessions_table[id].session_tx, &return_value, sizeof(int)); //POR FAZER TRATAMENTO DE ERROS
+            continue;
+        }
+        while (!sessions_table[id].buffer_on) {
+            pthread_cond_wait(&sessions_table[id].cond, &sessions_table->mutex);
+        }
+        //unlock?
+
+        switch (buffer[id].op_code) {
+
+            case TFS_OP_CODE_UNMOUNT:
+                //falta
+                break;
+            
+            case TFS_OP_CODE_OPEN:
+                return_value = tfs_open(buffer[id].filename, buffer[id].flags);
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                break;
+            
+            case TFS_OP_CODE_CLOSE:
+                return_value = tfs_close(buffer[id].fhandle);
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                break;
+
+            case TFS_OP_CODE_WRITE:
+                return_value = tfs_write(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                free(buffer[id].buf);
+                buffer[id].buf = NULL;
+                break;
+            
+            case TFS_OP_CODE_READ:  
+                return_value = tfs_read(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
+                if(write(sessions_table[id].session_tx, &return_value, sizeof(int)) < 0) {
+                    return_value = -1;
+                    write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                }
+                if(return_value > 0) { 
+                    write(sessions_table[id].session_tx, buffer[id].buf, return_value);
+                }
+                free(buffer[id].buf);
+                buffer[id].buf = NULL;
+                break;
+
+            case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED: //isto não devia ser feito pela tarefa recetora? (assumindo que era o shutdown completo do servidor)
+                return_value = tfs_destroy_after_all_closed();
+                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                for (int i = 0; i < S; i++) {
+                    if(sessions_table[i].session_state == TAKEN) {
+                        /*return_value =*/ delete_session(i);
+                        close(sessions_table[i].session_tx);
+                        
+                    }
+                    pthread_mutex_destroy(&sessions_table[i].mutex);
+                    pthread_cond_destroy(&sessions_table[i].cond);
+                }
+                close(rx_server_pipe);
+                if (unlink(pipename) != 0 && errno != ENOENT) {
+                    return 1;
+                }
+                break;
+            
+            default:
+                break;
+            
+        }
+        sessions_table[id].buffer_on = false;
+        if(pthread_mutex_unlock(&sessions_table[id].mutex) < 0) {
+            return_value = -1;
+            write(sessions_table[id].session_tx, &return_value, sizeof(int)); //POR FAZER TRATAMENTO DE ERROS
+        }
+    }
 }
 
 int main(int argc, char **argv) {
@@ -494,7 +496,7 @@ int main(int argc, char **argv) {
         case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED:
             printf("\t\tCURRENT OP_CODE:%d\n", op_code);
             printf("entrou SHUTDOWN\n");
-            tfs_shutdown_after_all_closed(pipename);
+            tfs_shutdown_after_all_closed();
             printf("saiu SHUTDOWN\n");
             /* code */
             //unlink do server_pipe
