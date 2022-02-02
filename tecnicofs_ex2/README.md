@@ -69,3 +69,19 @@ e os locks?
 PÔR LOCKS NO MOUNT E UNMOUNT
 
 SIGNAL OU BROADCAST
+
+Evitem terminar o servidor caso seja detetado um problema na comunicação com os clientes.
+Os clientes devem podem terminar abruptamente (p.e., ctrl+c) sem causar a terminação do servidor. Nestes casos, devem detetar o problema e simplesmente tornar as tarefas trabalhadoras novamente disponíveis para processar outros pedidos.
+\#########
+
+1- A solução mais robusta é detetar o problema lado servidor (a mensagem não tem o formato esperado) e "cancelar" a sessão com o cliente.
+2- Ao escrever para um pipe que já não existe, podem e devem "cancelar" a sessão. Este tipo de erro pode acontecer de qualquer forma se o cliente terminar após o pedido ter sido inserido no buffer e antes de ser processado.
+
+###########################
+
+Caso as funções lado servidor sobre os ficheiros falhem (p.e., o ficheiro que o cliente tenta abrir não existe) devem devolver -1 pelo fifo aos clientes.
+Caso o fifo seja fechado pelo cliente e a seguir o servidor tenta escrever no fifo, o servidor recebe um sigpipe, cuja rotina por omissão termina o processo. Podes evitar este problema ignorando o SIGPIPE (sys. call signal). 
+Se uma operação sobre os pipes (por exemplo write) falhar com -1 podem usar errno para decidir, dependendo da causa do erro, se devem tentar outra vez (por exemplo, EINTR) ou desistir (por exemplo, EPIPE).
+Claramente deves usar loops para implementar a lógica de "retry", e não aninhar as tentativas em blocos "IF"s como ilustras no teu post. 
+
+Espero ter conseguido ajudar.

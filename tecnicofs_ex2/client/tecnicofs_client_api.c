@@ -176,7 +176,7 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         return -1;
     }
 
-    if(!(read_len >= 0 && read(rx_client_pipe, buffer, read_len) > 0)) { 
+    if(!(read_len >= 0 && read(rx_client_pipe, buffer, (size_t)read_len) > 0)) { 
         return -1;
     }
     return (ssize_t)read_len;
