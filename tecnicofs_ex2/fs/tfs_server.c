@@ -145,12 +145,14 @@ int server_write_pipe(int fd, void *buf, size_t n, int session_id) {
         written += write(fd, buf + written, n - written);
         if(errno == EINTR) {
             continue;
-        } else if(errno = EPIPE) {
+        } else if(errno == EPIPE) {
             if(pthread_mutex_lock(&mutex) < 0) {
                 printf("[ERROR]\n");
                 exit(EXIT_FAILURE);
             }
-            delete_session(session_id);
+            if ( session_id != -2) {
+                delete_session(session_id);
+            }
             return -1;
         }
     }
@@ -206,7 +208,7 @@ void tfs_server_mount() {
     }
 
     if(pthread_mutex_lock(&mutex) < 0) {
-        write(tx, &return_value, sizeof(int));
+        server_write_pipe(tx, &return_value, sizeof(int), -2);
         close(tx);
         return;
     }
@@ -217,7 +219,7 @@ void tfs_server_mount() {
             exit(EXIT_FAILURE);
         }
         return_value = -1;
-        write(tx, &return_value, sizeof(int));
+        server_write_pipe(tx, &return_value, sizeof(int), -2);
         close(tx);
         return;
     }
@@ -230,12 +232,12 @@ void tfs_server_mount() {
             exit(EXIT_FAILURE);
         }
         return_value = -1;
-        write(tx, &return_value, sizeof(int));
+        server_write_pipe(tx, &return_value, sizeof(int), -2);
         close(tx);
         return;
     }
 
-    if(write(tx, &return_value, sizeof(int)) < 0) { //retry
+    if(server_write_pipe(tx, &return_value, sizeof(int), return_value) < 0) { //retry
         if(pthread_mutex_unlock(&mutex) <0) {
             printf("[ERROR]\n");
         }
