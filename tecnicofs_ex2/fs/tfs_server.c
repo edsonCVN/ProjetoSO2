@@ -40,10 +40,9 @@ char *pipename;
 
 void *worker_thread(void* session_id);
 
-void apanhaSIGPIPE (int s) {
-    if(signal(SIGPIPE, SIG_IGN) == SIG_ERR){
+void apanhaSIGPIPE () {
+    if(bsd_signal(SIGPIPE, SIG_IGN) == SIG_ERR){
         printf("[ERROR]\n");
-        return -1;
     }
 }
 
@@ -56,7 +55,7 @@ int server_init() {
     }
     SIG_IGN - sig ignore
     */
-    bsd_signal (SIGPIPE, apanhaSIGPIPE);
+    apanhaSIGPIPE()
     if (unlink(pipename) != 0 && errno != ENOENT) {
         return -1;
     }

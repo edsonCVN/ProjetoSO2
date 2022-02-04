@@ -150,7 +150,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     if(write(tx_server_pipe, input, 1 + 2*sizeof(int)+ sizeof(size_t) + len) < 0) {
         return -1;
     }
-
+    sleep(10);
     if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }
