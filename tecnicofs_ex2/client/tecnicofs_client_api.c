@@ -6,7 +6,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
-
+#include <sys/errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -81,7 +81,6 @@ int tfs_unmount() {
     printf("output %d\n", output);
     
     close(tx_server_pipe);
-    //sleep(1);
     close(rx_client_pipe);
     
     if (unlink(c_pipe_path) != 0 && errno != ENOENT) {
@@ -150,7 +149,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
     if(write(tx_server_pipe, input, 1 + 2*sizeof(int)+ sizeof(size_t) + len) < 0) {
         return -1;
     }
-    sleep(10);
+
     if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }

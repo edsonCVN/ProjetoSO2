@@ -3,6 +3,7 @@
         "assert.h": "c",
         "string.h": "c",
         "pthread.h": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "errno.h": "c"
     }
 }

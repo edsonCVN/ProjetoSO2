@@ -8,9 +8,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <signal.h>
-
-#define N 10
-
+//#include <common.h> ??
 
 /* VERIFICAR TODAS AS CONDIÇÕES DE ERRO, LOCKS, UNLOCKS, INITS...*/
 typedef struct {
@@ -44,6 +42,7 @@ void *worker_thread(void* session_id);
 void apanhaSIGPIPE () {
     if(signal(SIGPIPE, SIG_IGN) == SIG_ERR){
         printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -121,11 +120,13 @@ int delete_session (int session_id) {
         opened_sessions--;
         if(pthread_mutex_unlock(&mutex) <0) {
             printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
         }
         return 0;
     }
     if(pthread_mutex_unlock(&mutex) <0) {
         printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
     }
     return -1;
     
@@ -135,11 +136,56 @@ int delete_session (int session_id) {
     In the process opens the client's pipe to comunicate the new session_id if 
     successful (else -1). If mount is successful returns 0 else -1. 
 */
+
+
+int server_write_pipe(int fd, void *buf, size_t n, int session_id) {
+    size_t written = 0;
+    
+    while(written < n) { //inc?
+        written += write(fd, buf + written, n - written);
+        if(errno == EINTR) {
+            continue;
+        } else if(errno = EPIPE) {
+            if(pthread_mutex_lock(&mutex) < 0) {
+                printf("[ERROR]\n");
+                exit(EXIT_FAILURE);
+            }
+            delete_session(session_id);
+            return -1;
+        }
+    }
+    return written;
+}
+
+int server_read_pipe(int fd, void *buf, size_t nbytes) {
+    size_t already_read = 0;
+
+    while(already_read < nbytes) { //inc?
+        already_read += read(fd, buf + already_read, nbytes - already_read);
+        if(errno == EINTR) {
+            continue;
+        } else if(errno == EBADF) {
+            rx_server_pipe = open(pipename, O_RDONLY);
+            if (rx_server_pipe == -1) {
+                printf("[ERROR]\n");
+                exit(EXIT_FAILURE);
+            }
+            continue;
+        } else if (errno != 0 && already_read != nbytes) {
+            return -1;
+        }
+    }
+    
+    return already_read;
+}
+
+
 void tfs_server_mount() {
 
     int return_value = -1;
     char client_pipe_path[PATH_SIZE];
 
+    /*
     ssize_t ret = read(rx_server_pipe, client_pipe_path, PATH_SIZE);
     if (ret == 0) {
         close(rx_server_pipe);
@@ -148,6 +194,10 @@ void tfs_server_mount() {
         // ret == -1 signals error //signal!
         close(rx_server_pipe);
         return ; //completar
+    }*/
+
+    if(server_read_pipe(rx_server_pipe, client_pipe_path, PATH_SIZE) < 0) {
+        return;
     }
     
     int tx = open(client_pipe_path, O_WRONLY);
@@ -164,6 +214,7 @@ void tfs_server_mount() {
     if (opened_sessions == S) {
         if(pthread_mutex_unlock(&mutex) <0) {
             printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
         }
         return_value = -1;
         write(tx, &return_value, sizeof(int));
@@ -176,6 +227,7 @@ void tfs_server_mount() {
     if(return_value < 0) {
         if(pthread_mutex_unlock(&mutex) <0) {
             printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
         }
         return_value = -1;
         write(tx, &return_value, sizeof(int));
@@ -193,6 +245,7 @@ void tfs_server_mount() {
 
     if(pthread_mutex_unlock(&mutex) < 0) {
         printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -201,30 +254,48 @@ void tfs_server_unmount() {
     int return_value = -1;
     int session_id;
     
+    /* subst. read
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        return;
+    }
+    */
+    if(server_read_pipe(rx_server_pipe, &session_id, sizeof(int)) < 0) {
         return;
     }
 
     if(pthread_mutex_lock(&mutex) < 0) {
-        printf("[ERROR]\n");
         write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
-        return;
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
     }
-    
+    if(pthread_mutex_lock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        pthread_mutex_unlock(&mutex);
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
     buffer[session_id].op_code = TFS_OP_CODE_UNMOUNT;
     sessions_table[session_id].buffer_on = true;
     pthread_cond_signal(&sessions_table[session_id].cond);
-  
-    /* mutex unlock inside delete_session */   
+    
+    if(pthread_mutex_unlock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+    /* global mutex unlock inside delete_session */   
 }
 
 void tfs_server_open() {
     int session_id;
+    char filename[PATH_SIZE];
+    int flags;
+    int fhandle;
+    //passar para buffer
     int return_value = -1;
 
+    /*
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
@@ -236,25 +307,56 @@ void tfs_server_open() {
         write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
-    
+    */
+    if(server_read_pipe(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return;
+    }
+
+    if(server_read_pipe(rx_server_pipe, filename, PATH_SIZE) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+    if(server_read_pipe(rx_server_pipe, &flags, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+
+    if(pthread_mutex_lock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+
+    memcpy(buffer[session_id].filename, filename, PATH_SIZE);
+    buffer[session_id].flags = flags;
     buffer[session_id].op_code = TFS_OP_CODE_OPEN;
     sessions_table[session_id].buffer_on = true;
     pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
     
-    //1 ou S cond var's
-    /*
-    return_value = tfs_open(filename, flags);
-    write(sessions_tx_table[session_id], &return_value, sizeof(int));
-    */
+   if(pthread_mutex_unlock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void tfs_server_close() {
     
     int session_id;
+    int fhandle;
     int return_value = -1;
-
+    /*
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
 
@@ -262,18 +364,48 @@ void tfs_server_close() {
         write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
+    */
 
+    if(server_read_pipe(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return;
+    }
+
+    if(server_read_pipe(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+
+    if(pthread_mutex_lock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+
+    buffer[session_id].fhandle = fhandle;
     buffer[session_id].op_code = TFS_OP_CODE_CLOSE;
     sessions_table[session_id].buffer_on = true;
-    pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
+    pthread_cond_signal(&sessions_table[session_id].cond);
+
+    if(pthread_mutex_unlock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void tfs_server_write() {
     int session_id; 
+    int fhandle;
+    size_t len; 
     int return_value = -1;
 
+    /*
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
     
@@ -286,35 +418,77 @@ void tfs_server_write() {
         write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
         return;
     }
-
-    //char buffer[len]; //para dentro da thread
-
-    void *buff = malloc(sizeof(char)* buffer[session_id].len);
-
-
-    if(read(rx_server_pipe, buff, buffer[session_id].len) < 0) {
-        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+    */
+    
+    if(server_read_pipe(rx_server_pipe, &session_id, sizeof(int)) < 0) {
         return;
     }
 
+    if(server_read_pipe(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+
+    if(server_read_pipe(rx_server_pipe, &len, sizeof(size_t)) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+    
+
+    void *buff = malloc(sizeof(char)* len);
+
+
+    if(server_read_pipe(rx_server_pipe, buff, len) < 0) {
+        free(buff);
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+
+    }
+
+    if(pthread_mutex_lock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    buffer[session_id].fhandle = fhandle;
+    buffer[session_id].len = len;
     buffer[session_id].buf = buff;
     
     buffer[session_id].op_code = TFS_OP_CODE_WRITE;
     sessions_table[session_id].buffer_on = true;
     pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
-    /*
-    return_value = tfs_write(fhandle, buffer, len);
-    write(sessions_tx_table[session_id], &return_value, sizeof(int));
-    */
+    
+    if(pthread_mutex_unlock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void tfs_server_read() {
-    int session_id; 
+    int session_id;
+    int fhandle;
+    size_t len; 
     int read_len = -1;
 
-
+    /*
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_table[session_id].session_tx, &read_len, sizeof(int));
         return;
     }
     
@@ -327,13 +501,55 @@ void tfs_server_read() {
         write(sessions_table[session_id].session_tx, &read_len, sizeof(int));
         return;
     }
+    */
+
+   if(server_read_pipe(rx_server_pipe, &session_id, sizeof(int)) < 0) {
+        return;
+    }
+
+   if(server_read_pipe(rx_server_pipe, &fhandle, sizeof(int)) < 0) {
+        write(sessions_table[session_id].session_tx, &read_len, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+
+    if(server_read_pipe(rx_server_pipe, &len, sizeof(size_t)) < 0) {
+        write(sessions_table[session_id].session_tx, &read_len, sizeof(int));
+        if(pthread_mutex_lock(&mutex) < 0) {
+            printf("[ERROR]\n");
+            exit(EXIT_FAILURE);
+        }
+        delete_session(session_id);
+        return;
+    }
+
+    void *buff = malloc(sizeof(char)* len);
     
-    void *buff = malloc(sizeof(char)* buffer[session_id].len);
+    if(pthread_mutex_lock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &read_len, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    buffer[session_id].fhandle = fhandle;
+    buffer[session_id].len = len;
     buffer[session_id].buf = buff;
 
     buffer[session_id].op_code = TFS_OP_CODE_READ;
     sessions_table[session_id].buffer_on = true;
     pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
+
+    if(pthread_mutex_unlock(&sessions_table[session_id].mutex) < 0) {
+        write(sessions_table[session_id].session_tx, &read_len, sizeof(int)); //não trata de situação onde não consegue escrever
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+
+    
 
     /*
 
@@ -357,15 +573,24 @@ void tfs_shutdown_after_all_closed() {
     int session_id; 
 
     if(read(rx_server_pipe, &session_id, sizeof(int)) < 0) {
-        write(sessions_table[session_id].session_tx, &session_id, sizeof(int));
+        
         return;
+    }
+
+    if(pthread_mutex_lock(&sessions_table[session_id].mutex) < 0) {
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
     }
 
     buffer[session_id].op_code = TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED;
     sessions_table[session_id].buffer_on = true;
     pthread_cond_signal(&sessions_table[session_id].cond); //signal? 
 
-    
+    if(pthread_mutex_unlock(&sessions_table[session_id].mutex) < 0) {
+        printf("[ERROR]\n");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 void *worker_thread(void* session_id) {
@@ -408,6 +633,7 @@ void *worker_thread(void* session_id) {
             case TFS_OP_CODE_WRITE:
                 return_value = tfs_write(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
                 write(sessions_table[id].session_tx, &return_value, sizeof(int)); //signal
+                printf("write sig error %s\n", strerror(errno));
                 free(buffer[id].buf);
                 buffer[id].buf = NULL;
                 break;
@@ -474,7 +700,7 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);//tratar
     }
 
-    //apanhaSIGPIPE();
+    apanhaSIGPIPE();
     while (true) { //com open e close do pipe clients->server ?
         
         char op_code;
