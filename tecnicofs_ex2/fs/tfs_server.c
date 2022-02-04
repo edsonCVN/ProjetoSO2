@@ -40,6 +40,13 @@ char *pipename;
 
 void *worker_thread(void* session_id);
 
+void apanhaSIGPIPE (int s) {
+    if(signal(SIGPIPE, SIG_IGN) == SIG_ERR){
+        printf("[ERROR]\n");
+        return -1;
+    }
+}
+
 int server_init() {
     
     /*
@@ -49,7 +56,7 @@ int server_init() {
     }
     SIG_IGN - sig ignore
     */
-
+    bsd_signal (SIGPIPE, apanhaSIGPIPE);
     if (unlink(pipename) != 0 && errno != ENOENT) {
         return -1;
     }
@@ -107,13 +114,21 @@ int add_new_session (int client_pipe_tx) {
 }
 
 int delete_session (int session_id) {
+    
     if (sessions_table[session_id].session_state == TAKEN) {
         sessions_table[session_id].session_state = FREE;
         sessions_table[session_id].session_tx = -1;
         opened_sessions--;
+        if(pthread_mutex_unlock(&mutex) <0) {
+            printf("[ERROR]\n");
+        }
         return 0;
     }
+    if(pthread_mutex_unlock(&mutex) <0) {
+        printf("[ERROR]\n");
+    }
     return -1;
+    
 }
 
 /*  Receives the new client's pipe path and creates a new session.
@@ -122,7 +137,6 @@ int delete_session (int session_id) {
 */
 void tfs_server_mount() {
 
-    //char buffer[PIPE_PATH_SIZE];
     int return_value = -1;
     char client_pipe_path[PATH_SIZE];
 
@@ -131,38 +145,54 @@ void tfs_server_mount() {
         close(rx_server_pipe);
         return ;
     } else if (ret == -1) {
-        // ret == -1 signals error
+        // ret == -1 signals error //signal!
         close(rx_server_pipe);
         return ; //completar
     }
-  
+    
     int tx = open(client_pipe_path, O_WRONLY);
     if (tx == -1) {
         return;
     }
 
-    //criar nova sessão
+    if(pthread_mutex_lock(&mutex) < 0) {
+        write(tx, &return_value, sizeof(int));
+        close(tx);
+        return;
+    }
+    
     if (opened_sessions == S) {
+        if(pthread_mutex_unlock(&mutex) <0) {
+            printf("[ERROR]\n");
+        }
         return_value = -1;
-        //write(tx, -1, sizeof(int));
         write(tx, &return_value, sizeof(int));
         close(tx);
         return;
     }
             
-    //int session_id = add_new_session(tx);
     return_value = add_new_session(tx);
 
     if(return_value < 0) {
+        if(pthread_mutex_unlock(&mutex) <0) {
+            printf("[ERROR]\n");
+        }
+        return_value = -1;
         write(tx, &return_value, sizeof(int));
         close(tx);
         return;
     }
 
-    //problemas de sincornização, recorrer a return_value?
-    if(write(tx, &return_value, sizeof(int)) < 0) { //não trata de situação onde não consegue escrever
+    if(write(tx, &return_value, sizeof(int)) < 0) { //retry
+        if(pthread_mutex_unlock(&mutex) <0) {
+            printf("[ERROR]\n");
+        }
         close(tx);
         return;
+    }
+
+    if(pthread_mutex_unlock(&mutex) < 0) {
+        printf("[ERROR]\n");
     }
 }
 
@@ -176,11 +206,17 @@ void tfs_server_unmount() {
         return;
     }
 
-    int tx = sessions_table[session_id].session_tx;
-    return_value = delete_session(session_id);
-    write(tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
-    close(tx);
+    if(pthread_mutex_lock(&mutex) < 0) {
+        printf("[ERROR]\n");
+        write(sessions_table[session_id].session_tx, &return_value, sizeof(int)); //não trata de situação onde não consegue escrever
+        return;
+    }
     
+    buffer[session_id].op_code = TFS_OP_CODE_UNMOUNT;
+    sessions_table[session_id].buffer_on = true;
+    pthread_cond_signal(&sessions_table[session_id].cond);
+  
+    /* mutex unlock inside delete_session */   
 }
 
 void tfs_server_open() {
@@ -334,6 +370,8 @@ void tfs_shutdown_after_all_closed() {
 
 void *worker_thread(void* session_id) {
 
+    int tx = -1;
+
     while(true) {
         int id = *((int*)session_id); //testar
         int return_value = -1;
@@ -350,34 +388,38 @@ void *worker_thread(void* session_id) {
         switch (buffer[id].op_code) {
 
             case TFS_OP_CODE_UNMOUNT:
-                //falta
+                
+                tx = sessions_table[id].session_tx;
+                return_value = delete_session(id);
+                write(tx, &return_value, sizeof(int)); //signal
+                close(sessions_table[id].session_tx);
                 break;
             
             case TFS_OP_CODE_OPEN:
                 return_value = tfs_open(buffer[id].filename, buffer[id].flags);
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                write(sessions_table[id].session_tx, &return_value, sizeof(int)); //signal
                 break;
             
             case TFS_OP_CODE_CLOSE:
                 return_value = tfs_close(buffer[id].fhandle);
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                write(sessions_table[id].session_tx, &return_value, sizeof(int)); //signal
                 break;
 
             case TFS_OP_CODE_WRITE:
                 return_value = tfs_write(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                write(sessions_table[id].session_tx, &return_value, sizeof(int)); //signal
                 free(buffer[id].buf);
                 buffer[id].buf = NULL;
                 break;
             
             case TFS_OP_CODE_READ:  
                 return_value = tfs_read(buffer[id].fhandle, buffer[id].buf, buffer[id].len);
-                if(write(sessions_table[id].session_tx, &return_value, sizeof(int)) < 0) {
+                if(write(sessions_table[id].session_tx, &return_value, sizeof(int)) < 0) { //signal
                     return_value = -1;
-                    write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                    write(sessions_table[id].session_tx, &return_value, sizeof(int)); //signal
                 }
                 if(return_value > 0) { 
-                    write(sessions_table[id].session_tx, buffer[id].buf, return_value);
+                    write(sessions_table[id].session_tx, buffer[id].buf, return_value); //signal
                 }
                 free(buffer[id].buf);
                 buffer[id].buf = NULL;
@@ -385,7 +427,7 @@ void *worker_thread(void* session_id) {
 
             case TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED: //isto não devia ser feito pela tarefa recetora? (assumindo que era o shutdown completo do servidor)
                 return_value = tfs_destroy_after_all_closed();
-                write(sessions_table[id].session_tx, &return_value, sizeof(int));
+                write(sessions_table[id].session_tx, &return_value, sizeof(int)); //signal
                 for (int i = 0; i < S; i++) {
                     if(sessions_table[i].session_state == TAKEN) {
                         /*return_value =*/ delete_session(i);
@@ -399,6 +441,10 @@ void *worker_thread(void* session_id) {
                 if (unlink(pipename) != 0 && errno != ENOENT) {
                     return 1;
                 }
+
+
+                //DUVIDA E OWRITE FINAL DO WHILE?
+
                 break;
             
             default:

@@ -78,6 +78,7 @@ int tfs_unmount() {
     if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { 
         return -1;
     }
+    printf("output %d\n", output);
     
     close(tx_server_pipe);
     //sleep(1);
