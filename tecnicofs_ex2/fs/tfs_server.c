@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <signal.h>
 
 #define N 10
 
@@ -41,7 +42,7 @@ char *pipename;
 void *worker_thread(void* session_id);
 
 void apanhaSIGPIPE () {
-    if(bsd_signal(SIGPIPE, SIG_IGN) == SIG_ERR){
+    if(signal(SIGPIPE, SIG_IGN) == SIG_ERR){
         printf("[ERROR]\n");
     }
 }
@@ -55,7 +56,7 @@ int server_init() {
     }
     SIG_IGN - sig ignore
     */
-    apanhaSIGPIPE()
+    
     if (unlink(pipename) != 0 && errno != ENOENT) {
         return -1;
     }
@@ -473,6 +474,7 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);//tratar
     }
 
+    //apanhaSIGPIPE();
     while (true) { //com open e close do pipe clients->server ?
         
         char op_code;
