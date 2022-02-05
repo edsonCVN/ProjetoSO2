@@ -17,8 +17,11 @@ int main(int argc, char **argv) {
     char *path2 = "/f12";
     char buffer2[40];
 
-    int f;
-    ssize_t r;
+    int f = 0;
+    ssize_t r = 0;
+
+    int f2 ;
+    ssize_t r2;
 
     int t;
 
@@ -55,32 +58,35 @@ int main(int argc, char **argv) {
         assert(tfs_unmount() == 0);
 
         printf("Successful test.\n");
-    } else if ( t < 0) {
+        
+    } else  {
 
         assert(tfs_mount(argv[2], argv[3]) == 0);
         
-        f = tfs_open(path2, TFS_O_CREAT);
+        f2 = tfs_open(path2, TFS_O_CREAT);
         assert(f != -1);
 
-        r = tfs_write(f, str2, strlen(str2));
+        r2 = tfs_write(f2, str2, strlen(str2));
         assert(r == strlen(str2));
 
-        assert(tfs_close(f) != -1);
+        assert(tfs_close(f2) != -1);
 
-        f = tfs_open(path2, 0);
-        assert(f != -1);
+        f2 = tfs_open(path2, 0);
+        assert(f2 != -1);
 
-        r = tfs_read(f, buffer2, sizeof(buffer2) - 1);
-        assert(r == strlen(str));
+        r2 = tfs_read(f2, buffer2, sizeof(buffer2) - 1);
+        assert(r == strlen(str2));
 
-        buffer2[r] = '\0';
+        buffer2[r2] = '\0';
         assert(strcmp(buffer2, str2) == 0);
 
-        assert(tfs_close(f) != -1);
+        assert(tfs_close(f2) != -1);
         
         assert(tfs_unmount() == 0);
 
         printf("Successful 02 test.\n");
+
+        exit(0);
 
     }
 

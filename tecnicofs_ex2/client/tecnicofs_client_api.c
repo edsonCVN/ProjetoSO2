@@ -16,7 +16,6 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     input[0] = code;
     memcpy(input + 1, client_pipe_path, strlen(client_pipe_path));
     
-    
     if (unlink(client_pipe_path) != 0 && errno != ENOENT) {
         return -1;
     }
@@ -42,9 +41,9 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) {
         return -1;
     }
-    
+    printf("out: %d\n", output);
     session_id = output;
-
+    printf("session_id: %d\n", session_id);
     return 0;
 }
 

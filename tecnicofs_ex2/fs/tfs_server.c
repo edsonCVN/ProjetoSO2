@@ -203,6 +203,7 @@ void tfs_server_mount() {
     }
             
     return_value = add_new_session(tx);
+    printf("return_value: %d\n", return_value);
 
     if(return_value < 0) {
         if(pthread_mutex_unlock(&mutex) < 0) {
@@ -623,11 +624,11 @@ int main(int argc, char **argv) {
             close(rx_server_pipe);
             exit(EXIT_FAILURE);
         }
-
+        
         switch (op_code) {
 
         case TFS_OP_CODE_MOUNT:
-            printf("ggg\n");
+            printf("op: %d\n", op_code);
             tfs_server_mount();
            
             break;
