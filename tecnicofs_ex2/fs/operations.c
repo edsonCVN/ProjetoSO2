@@ -8,7 +8,7 @@
 static pthread_mutex_t single_global_lock;
 static pthread_cond_t canDestroy;
 static int opened_files;
-static open_state_t can_open = OPEN_OFF; // perguntar se é mesmo necessário, usar só bool provavelmente
+static open_state_t can_open = OPEN_OFF; 
 
 int tfs_init() {
     state_init();

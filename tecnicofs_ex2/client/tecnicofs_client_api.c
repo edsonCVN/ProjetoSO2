@@ -1,14 +1,5 @@
 #include "tecnicofs_client_api.h"
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <string.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <sys/errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+
 
 int session_id = -1;
 int tx_server_pipe = -1;
@@ -25,23 +16,19 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     input[0] = code;
     memcpy(input + 1, client_pipe_path, strlen(client_pipe_path));
     
-    printf("input: %s\n", input);
     
     if (unlink(client_pipe_path) != 0 && errno != ENOENT) {
         return -1;
     }
 
-    // create pipe
     if (mkfifo(client_pipe_path, 0640) != 0) {
         return -1;
     }
 
-    // first open clients->server pipe for write 
     tx_server_pipe = open(server_pipe_path, O_WRONLY);
     if (tx_server_pipe == -1) {
         return -1;
     }
-    printf("client buffer: %s\n", input);
     
     if (write(tx_server_pipe, input, 1 + PATH_SIZE) < 0) {
         return -1;
@@ -57,7 +44,6 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     }
     
     session_id = output;
-    printf("recebeu session_id: %d\n", session_id);
 
     return 0;
 }
@@ -74,11 +60,10 @@ int tfs_unmount() {
     if(write(tx_server_pipe,input, 1 + sizeof(int)) < 0) {
         return -1;
     }
-
+    
     if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { 
         return -1;
     }
-    printf("output %d\n", output);
     
     close(tx_server_pipe);
     close(rx_client_pipe);
@@ -86,7 +71,7 @@ int tfs_unmount() {
     if (unlink(c_pipe_path) != 0 && errno != ENOENT) {
         return -1;
     }
-    printf("Successful unmount.\n");
+   
     return 0;
 }
 
@@ -183,6 +168,19 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
 }
 
 int tfs_shutdown_after_all_closed() {
-    /* TODO: Implement this */
-    return -1;
+    char code = TFS_OP_CODE_SHUTDOWN_AFTER_ALL_CLOSED;
+    char input[1 + sizeof(int)];
+    int output = -1;
+
+    input[0] = code;
+    memcpy(input + 1, &session_id, sizeof(int));
+
+    if(write(tx_server_pipe, &input, 1 + sizeof(int)) < 0) {
+        return -1;
+    }
+    
+    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+        return -1;
+    }
+    return output;
 }

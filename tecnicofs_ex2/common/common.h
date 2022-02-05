@@ -20,8 +20,7 @@ enum {
 };
 
 #define PATH_SIZE 40
-#define CLIENT_BUFFER_SIZE 42
-#define SERVER_BUFFER_SIZE 47
+#define NO_SESSION -2
                     
 
 void send_msg(int tx, char const *str);

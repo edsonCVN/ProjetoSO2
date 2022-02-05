@@ -3,6 +3,16 @@
 
 #include "common/common.h"
 #include <sys/types.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <string.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <sys/errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /*
  * Establishes a session with a TecnicoFS server.

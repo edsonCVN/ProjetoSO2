@@ -13,8 +13,14 @@ int main(int argc, char **argv) {
     char *path = "/f1";
     char buffer[40];
 
+    char *str2 = "AAAg!";
+    char *path2 = "/f12";
+    char buffer2[40];
+
     int f;
     ssize_t r;
+
+    int t;
 
     if (argc < 3) {
         printf("You must provide the following arguments: 'client_pipe_path "
@@ -22,30 +28,61 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    assert(tfs_mount(argv[1], argv[2]) == 0);
-    
-    f = tfs_open(path, TFS_O_CREAT);
-    assert(f != -1);
+    t = fork();
 
-    r = tfs_write(f, str, strlen(str));
-    assert(r == strlen(str));
+    if (t == 0) {
+        assert(tfs_mount(argv[1], argv[3]) == 0);
+        
+        f = tfs_open(path, TFS_O_CREAT);
+        assert(f != -1);
 
-    assert(tfs_close(f) != -1);
+        r = tfs_write(f, str, strlen(str));
+        assert(r == strlen(str));
 
-    f = tfs_open(path, 0);
-    assert(f != -1);
+        assert(tfs_close(f) != -1);
 
-    r = tfs_read(f, buffer, sizeof(buffer) - 1);
-    assert(r == strlen(str));
+        f = tfs_open(path, 0);
+        assert(f != -1);
 
-    buffer[r] = '\0';
-    assert(strcmp(buffer, str) == 0);
+        r = tfs_read(f, buffer, sizeof(buffer) - 1);
+        assert(r == strlen(str));
 
-    assert(tfs_close(f) != -1);
-    
-    assert(tfs_unmount() == 0);
+        buffer[r] = '\0';
+        assert(strcmp(buffer, str) == 0);
 
-    printf("Successful test.\n");
+        assert(tfs_close(f) != -1);
+        
+        assert(tfs_unmount() == 0);
+
+        printf("Successful test.\n");
+    } else if ( t < 0) {
+
+        assert(tfs_mount(argv[2], argv[3]) == 0);
+        
+        f = tfs_open(path2, TFS_O_CREAT);
+        assert(f != -1);
+
+        r = tfs_write(f, str2, strlen(str2));
+        assert(r == strlen(str2));
+
+        assert(tfs_close(f) != -1);
+
+        f = tfs_open(path2, 0);
+        assert(f != -1);
+
+        r = tfs_read(f, buffer2, sizeof(buffer2) - 1);
+        assert(r == strlen(str));
+
+        buffer2[r] = '\0';
+        assert(strcmp(buffer2, str2) == 0);
+
+        assert(tfs_close(f) != -1);
+        
+        assert(tfs_unmount() == 0);
+
+        printf("Successful 02 test.\n");
+
+    }
 
     return 0;
 }
