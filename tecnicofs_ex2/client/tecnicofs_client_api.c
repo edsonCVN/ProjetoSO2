@@ -6,6 +6,28 @@ int tx_server_pipe = -1;
 int rx_client_pipe = -1;
 char c_pipe_path[PATH_SIZE];
 
+ssize_t client_read_pipe(int fd, void *buf, size_t nbytes) {
+    ssize_t already_read = 0;
+
+    while(already_read < nbytes) {
+        already_read += read(fd, buf + already_read, nbytes - (size_t)already_read);
+        if(errno == EINTR) {
+            continue;
+        } else if(errno == EBADF) {
+            rx_client_pipe = open(c_pipe_path, O_RDONLY);
+            if (rx_client_pipe == -1) {
+                printf("[ERROR]\n");
+                exit(EXIT_FAILURE);
+            }
+            continue;
+        } else if (errno != 0 && already_read != nbytes) {
+            return -1;
+        }
+    }
+    
+    return already_read;
+}
+
 int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
     
     char code = TFS_OP_CODE_MOUNT;
@@ -38,12 +60,11 @@ int tfs_mount(char const *client_pipe_path, char const *server_pipe_path) {
         return -1;
     }
     
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) {
+    if(client_read_pipe(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) {
         return -1;
     }
-    printf("out: %d\n", output);
+
     session_id = output;
-    printf("session_id: %d\n", session_id);
     return 0;
 }
 
@@ -60,7 +81,7 @@ int tfs_unmount() {
         return -1;
     }
     
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { 
+    if(client_read_pipe(rx_client_pipe, &output, sizeof(int)) < 0 || output < 0) { 
         return -1;
     }
     
@@ -91,7 +112,7 @@ int tfs_open(char const *name, int flags) {
         return -1;
     }
 
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+    if(client_read_pipe(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }
 
@@ -112,7 +133,7 @@ int tfs_close(int fhandle) {
         return -1;
     }
     
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+    if(client_read_pipe(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }
     return output;
@@ -134,7 +155,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t len) {
         return -1;
     }
 
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+    if(client_read_pipe(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }
 
@@ -156,11 +177,11 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         return -1;
     }
 
-    if(read(rx_client_pipe, &read_len, sizeof(int)) < 0) { 
+    if(client_read_pipe(rx_client_pipe, &read_len, sizeof(int)) < 0) { 
         return -1;
     }
 
-    if(!(read_len >= 0 && read(rx_client_pipe, buffer, (size_t)read_len) > 0)) { 
+    if(!(read_len >= 0 && client_read_pipe(rx_client_pipe, buffer, (size_t)read_len) > 0)) { 
         return -1;
     }
     return (ssize_t)read_len;
@@ -178,7 +199,7 @@ int tfs_shutdown_after_all_closed() {
         return -1;
     }
     
-    if(read(rx_client_pipe, &output, sizeof(int)) < 0) { 
+    if(client_read_pipe(rx_client_pipe, &output, sizeof(int)) < 0) { 
         return -1;
     }
     return output;

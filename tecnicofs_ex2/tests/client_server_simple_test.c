@@ -64,10 +64,10 @@ int main(int argc, char **argv) {
         assert(tfs_mount(argv[2], argv[3]) == 0);
         
         f2 = tfs_open(path2, TFS_O_CREAT);
-        assert(f != -1);
+        assert(f2 != -1);
 
         r2 = tfs_write(f2, str2, strlen(str2));
-        assert(r == strlen(str2));
+        assert(r2 == strlen(str2));
 
         assert(tfs_close(f2) != -1);
 
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
         assert(f2 != -1);
 
         r2 = tfs_read(f2, buffer2, sizeof(buffer2) - 1);
-        assert(r == strlen(str2));
+        assert(r2 == strlen(str2));
 
         buffer2[r2] = '\0';
         assert(strcmp(buffer2, str2) == 0);
