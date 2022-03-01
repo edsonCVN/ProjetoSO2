@@ -1,4 +1,4 @@
-# ProjectoSO2
+# ProjetoSO2
 
 Projeto de Sistemas Operativos 2021-22
 Enunciado do 2o exercício LEIC-A/LEIC-T/LETI
